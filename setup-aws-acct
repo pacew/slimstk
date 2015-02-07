@@ -1,0 +1,623 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+$argv = $_SERVER['argv'];
+
+$aws_acct_name = trim (@$argv[1]);
+$aws_acct_name = "pacew";
+
+$cfile = sprintf ("confdir-%s", $aws_acct_name);
+if (! file_exists ($cfile)) {
+	printf ("enter directory for slimstk conf for acct %s: ",
+		$aws_acct_name);
+	$stdin = fopen ("php://stdin", "r");
+	$dirname = trim (fgets ($stdin));
+	if (! file_exists ($dirname)) {
+		printf ("%s does not exist\n", $dirname);
+		exit (1);
+	}
+	file_put_contents ($cfile, $dirname . "\n");
+}
+
+require_once ("./slimstk.php");
+slimstk_bail_out_on_error ();
+
+slimstk_set_acct ($aws_acct_name);
+
+function setup_role ($role_name, $policy, $trust) {
+	slimstk_set_region (NULL);
+
+	$args = array ("iam", "get-role");
+	$args[] = "--role-name";
+	$args[] = $role_name;
+	$args[] = "--query";
+	$args[] = "Role.Arn";
+	if (slimstk_aws ($args, 1) == NULL) {
+
+		$args = array ("iam", "create-role");
+		$args[] = "--role-name";
+		$args[] = $role_name;
+		$args[] = "--assume-role-policy-document";
+		$args[] = json_encode ($trust);
+		slimstk_aws ($args);
+			   
+		$args = array ("iam", "put-role-policy");
+		$args[] = "--role-name";
+		$args[] = $role_name;
+		$args[] = "--policy-name";
+		$args[] = sprintf ("%s-policy", $role_name);
+		$args[] = "--policy-document";
+		$args[] = json_encode ($policy);
+		slimstk_aws ($args);
+	}
+}
+
+function setup_server_role () {
+	$role_name = "server";
+
+	/* TODO: reduce permissions */
+	$policy = array (
+		"Version" => "2012-10-17",
+		"Statement" => array (
+			array (
+				"Effect" => "Allow",
+				"NotAction" => "iam:*",
+				"Resource" => "*")
+			)
+		);
+
+	$trust = array (
+		"Version" => "2012-10-17",
+		"Statement" => array (
+			array ("Action" => "sts:AssumeRole",
+			       "Principal" => array (
+				       "Service" => "ec2.amazonaws.com"
+				       ),
+			       "Effect" => "Allow",
+			       "Sid" => "")));
+
+
+	setup_role ($role_name, $policy, $trust);
+}
+
+function find_security_group ($group_name) {
+	$args = array ("ec2", "describe-security-groups");
+	$val = slimstk_aws ($args);
+	$groups = $val['SecurityGroups'];
+
+	foreach ($groups as $group_info) {
+		if ($group_info['GroupName'] == $group_name)
+			return ($group_info);
+	}
+	return (NULL);
+}
+
+function setup_security_group ($region, $group_name,
+			       $incoming_ports, $source_group) {
+	slimstk_set_region ($region);
+
+	if ($source_group) {
+		$key = sprintf ("%s.groupid", $source_group);
+		$source_group_id = slimstk_getvar_region ($key);
+	}
+
+	$vpc_id = slimstk_getvar_region ("vpc_id");
+
+	$group_info = find_security_group ($group_name);
+	if ($group_info == NULL) {
+		printf ("creating security group %s\n", $group_name);
+		$args = array ("ec2", "create-security-group");
+		$args[] = "--group-name";
+		$args[] = $group_name;
+		$args[] = "--description";
+		$args[] = $group_name;
+		$args[] = "--vpc-id";
+		$args[] = $vpc_id;
+		slimstk_aws ($args);
+		$group_info = find_security_group ($group_name);
+		if ($group_info == NULL) {
+			printf ("failed to create %s\n", $group_name);
+			exit (1);
+		}
+	}
+
+	$group_id = $group_info['GroupId'];
+	$key = sprintf ("%s.groupid", $group_name);
+	slimstk_putvar_region ($key, $group_id);
+
+	$ipperms = array ();
+	foreach ($incoming_ports as $port) {
+		$match = 0;
+		foreach ($group_info['IpPermissions'] as $perm) {
+			if ($perm['FromPort'] == $port
+			    && $perm['ToPort'] == $port
+			    && $perm['IpProtocol'] == "tcp") {
+				$match = 1;
+				break;
+			}
+		}
+
+		if (! $match) {
+			printf ("adding port %d to %s\n",
+				$port, $group_name);
+			$ipperm = array ("IpProtocol" => "tcp",
+					 "FromPort" => $port,
+					 "ToPort" => $port);
+			if ($source_group == NULL) {
+				$item = array("CidrIp" => "0.0.0.0/0");
+				$ipperm['IpRanges'] = array($item);
+			} else {
+				$item = array ("GroupId" => $source_group_id);
+				$ipperm['UserIdGroupPairs'] = array ($item);
+			}
+
+			$ipperms[] = $ipperm;
+		}
+	}
+
+	if (count ($ipperms) > 0) {
+		$args = array ("ec2", "authorize-security-group-ingress");
+		$args[] = "--group-id";
+		$args[] = $group_id;
+		$args[] = "--ip-permissions";
+		$args[] = json_encode ($ipperms);
+		slimstk_aws ($args);
+	}
+
+}
+
+function setup_db ($region, $database) {
+	global $slimstk;
+
+	slimstk_set_region ($region);
+
+	$vpc_id = slimstk_getvar_region ("vpc_id");
+
+	$args = array ("rds", "describe-db-instances");
+	$val = slimstk_aws ($args);
+	$instances = $val['DBInstances'];
+	$match = 0;
+	foreach ($instances as $iinfo) {
+		if (strcmp ($iinfo['DBInstanceIdentifier'], $database) == 0) {
+			$match = 1;
+			$key = sprintf ("dbhost.%s", $database);
+			slimstk_putvar_region ($key,
+					       $iinfo['Endpoint']['Address']);
+		}
+	}
+
+	if ($match) {
+		printf ("database %s is already set up\n", $database);
+		return;
+	}
+
+	printf ("create database %s %s\n", $region, $database);
+
+	printf ("ok? ");
+	if (strcmp (trim (slimstk_gets ()), "y") != 0) {
+		printf ("...skip\n");
+		return;
+	}
+
+	printf ("creating...\n");
+
+	$pwname_gpg = sprintf ("%s/dbpass.%s.%s.gpg",
+			       $slimstk['conf_dir'],
+			       $slimstk['aws_acct_name'],
+			       $database);
+
+	if (! file_exists ($pwname_gpg)) {
+		$db_passwd = trim (shell_exec ("pwgen -s 14 1"));
+		if (strlen ($db_passwd) != 14) {
+			printf ("error generating password\n");
+			exit (1);
+		}
+		$pwname_clear = "DANGER.clear";
+		@unlink ($pwname_clear);
+		file_put_contents ($pwname_clear, $db_passwd."\n");
+
+		$gpg_key_ids = slimstk_get_gpg_ids_for_db ($database);
+
+		$cmd = sprintf ("gpg --encrypt --output %s",
+				escapeshellarg ($pwname_gpg));
+		foreach ($gpg_key_ids as $key_id) {
+			$cmd .= sprintf (" --recipient %s",
+					 escapeshellarg ($key_id));
+		}
+		$cmd .= sprintf (" %s", escapeshellarg ($pwname_clear));
+		@unlink ($pwname_gpg);
+		system ($cmd, $rc);
+		if ($rc != 0) {
+			printf ("error running: %s\n", $cmd);
+			exit (1);
+		}
+		@unlink ($pwname_clear);
+	}
+	
+	$cmd = sprintf ("gpg --quiet --decrypt --output - %s",
+			escapeshellarg ($pwname_gpg));
+	$db_passwd = trim (shell_exec ($cmd));
+	
+	if ($db_passwd == "") {
+		printf ("no db passwd found\n");
+		exit (1);
+	}
+
+	printf ("passwd %s\n", $db_passwd);
+
+	$subnet_group_name = "db_subnet_group";
+
+	$val = slimstk_aws (array ("rds", "describe-db-subnet-groups"));
+	$match = 0;
+	foreach ($val['DBSubnetGroups'] as $group) {
+		if (strcmp ($group['DBSubnetGroupName'],
+			    $subnet_group_name) == 0) {
+			$match = 1;
+			break;
+		}
+	}
+
+	if ($match == 0) {
+		printf ("create db subnet group\n");
+		$val = slimstk_aws (array ("ec2", "describe-subnets"));
+		$subnet_ids = array ();
+		foreach ($val['Subnets'] as $subnet) {
+			if (strcmp ($subnet['VpcId'], $vpc_id) == 0)
+				$subnet_ids[] = $subnet['SubnetId'];
+		}
+
+		$args = array ("rds", "create-db-subnet-group");
+		$args[] = "--db-subnet-group-name";
+		$args[] = $subnet_group_name;
+		$args[] = "--db-subnet-group-description";
+		$args[] = $subnet_group_name;
+		$args[] = "--subnet-ids";
+		$args[] = json_encode ($subnet_ids);
+		slimstk_aws ($args);
+	}
+
+	$sgdb = slimstk_getvar_region ("sgdb.groupid");
+
+	$args = array ("rds", "create-db-instance");
+	$args[] = "--db-instance-identifier";
+	$args[] = $database;
+	$args[] = "--allocated-storage";
+	$args[] = "5"; /* gigabytes, range 5..3072 */
+	$args[] = "--db-instance-class";
+	$args[] = "db.t1.micro";
+	$args[] = "--db-subnet-group-name";
+	$args[] = $subnet_group_name;
+	$args[] = "--vpc-security-group-ids";
+	$args[] = $sgdb;
+	$args[] = "--engine";
+	$args[] = "MySQL";
+	$args[] = "--master-username";
+	$args[] = "root";
+	$args[] = "--master-user-password";
+	$args[] = $db_passwd;
+	$args[] = "--no-publicly-accessible";
+	
+	slimstk_aws ($args);
+	printf ("wait for database to start, then run setup-aws-acct again\n");
+	exit (0);
+}
+
+function get_availability_zones () {
+	global $slimstk;
+
+	$args = array ("ec2", "describe-availability-zones");
+	$val = slimstk_aws ($args);
+	$avzones = array ();
+	foreach ($val['AvailabilityZones'] as $zinfo) {
+		if ($zinfo['RegionName'] == $slimstk['current_region']
+		    && $zinfo['State'] == "available") {
+			$avzones[] = $zinfo['ZoneName'];
+		}
+	}
+	return ($avzones);
+}
+
+function setup_elb ($stkname, $stkinfo) {
+	slimstk_set_region ($stkinfo['region']);
+
+	$elbname = sprintf ("%selb", $stkname);
+
+	$args = array ("elb", "describe-load-balancers");
+	$val = slimstk_aws ($args);
+	$lbs = $val['LoadBalancerDescriptions'];
+	$match = 0;
+	foreach ($lbs as $lb) {
+		if ($lb['LoadBalancerName'] == $elbname) {
+			$match = 1;
+			break;
+		}
+	}
+
+	if ($match) {
+		return ($lb['DNSName']);
+	}
+
+	$avzones = get_availibility_zones ();
+
+	$listeners = array ();
+	$listeners[] = array (
+		"Protocol" => "HTTP",
+		"LoadBalancerPort" => 80,
+		"InstanceProtocol" => "HTTP",
+		"InstancePort" => 80
+		);
+
+	$args = array ("elb", "create-load-balancer");
+	$args[] = "--load-balancer-name";
+	$args[] = $elbname;
+	$args[] = "--listeners";
+	$args[] = json_encode ($listeners);
+	$args[] = "--availability-zones";
+	$args[] = json_encode ($avzones);
+	$args[] = "--security-groups";
+	$args[] = slimstk_getvar ("sgext.groupid");
+	$val = slimstk_aws ($args);
+
+	$dns_name = $val['DNSName'];
+
+	$chk = array ("Target" => "HTTP:80/",
+		      "Interval" => 10,
+		      "Timeout" => 5,
+		      "UnhealthyThreshold" => 2,
+		      "HealthyThreshold" => 2);
+
+	$args = array ("elb", "configure-health-check");
+	$args[] = "--load-balancer-name";
+	$args[] = $elbname;
+	$args[] = "--health-check";
+	$args[] = json_encode ($chk);
+	slimstk_aws ($args);
+
+	$attrs = array ("CrossZoneLoadBalancing"
+			=> array ("Enabled" => true));
+	$args = array ("elb", "modify-load-balancer-attributes");
+	$args[] = "--load-balancer-name";
+	$args[] = $elbname;
+	$args[] = "--load-balancer-attributes";
+	$args[] = json_encode ($attrs);
+	slimstk_aws ($args);
+
+	return ($dns_name);
+}
+
+function setup_aws_login () {
+	global $slimstk;
+
+	$acct = $slimstk['aws_acct_name'];
+	$user = $_SERVER['USER'];
+
+	if (($gpg_key_id = slimstk_get_gpg_id ($user)) == NULL) {
+		printf ("can't find gpg_key_id for %s\n", $user);
+		exit (1);
+	}
+	$access_key_basename = sprintf ("access-key-%s-%s", $acct, $user);
+
+	$access_key_gpg = sprintf ("%s/%s.gpg",
+				   $slimstk['conf_dir'], $access_key_basename);
+	
+	if (! file_exists ($access_key_gpg)) {
+		printf ("need access_key and secret_access_key for %s on %s\n",
+			$user, $acct);
+		printf ("access_key_id: ");
+		$access_key_id = trim (slimstk_gets ());
+		printf ("secret_access_key: ");
+		$secret_access_key = trim (slimstk_gets ());
+
+		$text = sprintf ("[%s-%s]\n", $acct, $user);
+		$text .= sprintf ("aws_access_key_id = %s\n", $access_key_id);
+		$text .= sprintf ("aws_secret_access_key = %s\n",
+				  $secret_access_key);
+		
+		$cleartext_file = "DANGER.clear";
+		file_put_contents ($cleartext_file, $text);
+		$cmd = sprintf ("gpg --encrypt --output %s --recipient %s %s",
+				escapeshellarg ($access_key_gpg),
+				escapeshellarg ($gpg_key_id),
+				escapeshellarg ($cleartext_file));
+		system ($cmd, $rc);
+		@unlink ($cleartext_file);
+		if ($rc != 0) {
+			printf ("error storing %s\n", $access_key_gpg);
+			exit (1);
+		}
+	}
+					
+	$lfile = sprintf ("%s/bin/aws-login-%s",
+			  $_SERVER['HOME'], $slimstk['aws_acct_name']);
+
+	$text = "#! /bin/sh\n";
+	$prog = sprintf ("%s/aws-login", getcwd ());
+	$text .= sprintf ("%s %s\n",
+			  escapeshellarg ($prog),
+			  escapeshellarg ($slimstk['conf_dir']));
+	file_put_contents ($lfile, $text);
+	chmod ($lfile, 0775);
+}
+
+function find_subnet_by_avzone ($subnets, $avzone) {
+	foreach ($subnets as $subnet) {
+		if (strcmp ($subnet['AvailabilityZone'], $avzone) == 0)
+			return ($subnet);
+	}
+	return (NULL);
+}
+
+function find_free_addr ($subnets, $vpc_addr) {
+	$parts = explode (".", $vpc_addr);
+	for ($netnum = 1; $netnum <= 10; $netnum++) {
+		$parts[2] = $netnum;
+		$addr = implode (".", $parts);
+
+		$cidr = sprintf ("%s/24", $addr);
+		$used = 0;
+		foreach ($subnets as $subnet) {
+			if (strcmp ($subnet['CidrBlock'], $cidr) == 0) {
+				$used = 1;
+				break;
+			}
+		}
+		if ($used == 0)
+			return ($addr);
+	}
+
+	return (NULL);
+}
+
+/* called for each region */
+function setup_vpc ($region, $vpc_addr) {
+	slimstk_set_region ($region);
+
+	$cidr_block = sprintf ("%s/16", $vpc_addr);
+
+	$args = array ("ec2", "describe-vpcs");
+	$val = slimstk_aws ($args);
+	$vpcs = $val['Vpcs'];
+	$match = 0;
+	foreach ($vpcs as $vpc) {
+		if (strcmp ($vpc['CidrBlock'], $cidr_block) == 0) {
+			$match = 1;
+			$vpc_id = $vpc['VpcId'];
+			break;
+		}
+	}
+
+	if ($match == 0) {
+		printf ("creating vpc\n");
+		$args = array ("ec2", "create-vpc");
+		$args[] = "--cidr-block";
+		$args[] = $cidr_block;
+		$val = slimstk_aws ($args);
+		if (($vpc = @$val['Vpc']) == NULL) {
+			printf ("error creating vpc\n");
+			exit (1);
+		}
+		$vpc_id = $vpc['VpcId'];
+	}
+
+	$avzones = get_availability_zones ();
+	sort ($avzones);
+
+	$val = slimstk_aws (array ("ec2", "describe-subnets"));
+	$subnets = $val['Subnets'];
+
+	sscanf ($vpc_addr, "%d.%d.%d.%d", $a, $b, $c, $d);
+	foreach ($avzones as $avzone) {
+		if (($subnet = find_subnet_by_avzone($subnets,$avzone))==NULL){
+			$addr = find_free_addr ($subnets, $vpc_addr);
+			if ($addr == NULL) {
+				printf ("no address available for subnet\n");
+				exit (1);
+			}
+
+			$cidr = sprintf ("%s/24", $addr);
+
+			printf ("create subnet for %s %s\n", $avzone, $cidr);
+
+			$args = array ("ec2", "create-subnet");
+			$args[] = "--vpc-id";
+			$args[] = $vpc_id;
+			$args[] = "--cidr-block";
+			$args[] = $cidr;
+			$args[] = "--availability-zone";
+			$args[] = $avzone;
+			$val = slimstk_aws ($args);
+			$subnet = $val['Subnet'];
+			$subnets[] = $subnet;
+		}
+
+		if (! @$subnet['MapPublicIpOnLaunch']) {
+			$args = array ("ec2", "modify-subnet-attribute");
+			$args[] = "--subnet-id";
+			$args[] = $subnet['SubnetId'];
+			$args[] = "--map-public-ip-on-launch";
+			slimstk_aws ($args);
+		}
+	}
+	file_put_contents ("TMP.subnets", json_encode ($subnets));
+
+	$args = array ("ec2", "describe-internet-gateways");
+	$val = slimstk_aws ($args);
+	$match = 0;
+	foreach ($val['InternetGateways'] as $gw) {
+		foreach ($gw['Attachments'] as $att) {
+			if (strcmp ($att['VpcId'], $vpc_id) == 0) {
+				$match = 1;
+				break;
+			}
+		}
+		if ($match)
+			break;
+	}
+
+	if ($match == 0) {
+		printf ("create internet gateway\n");
+		$args = array ("ec2", "create-internet-gateway");
+		$val = slimstk_aws ($args);
+		$gw = $val['InternetGateway'];
+
+		$gw_id = $gw['InternetGatewayId'];
+
+		$args = array ("ec2", "attach-internet-gateway");
+		$args[] = "--internet-gateway-id";
+		$args[] = $gw_id;
+		$args[] = "--vpc-id";
+		$args[] = $vpc_id;
+		slimstk_aws ($args);
+	}
+
+	slimstk_putvar_region ("vpc_id", $vpc_id);
+}
+
+/* ================================================================ */
+
+setup_db ("us-east-1", "db");
+exit ();
+
+setup_aws_login ();
+
+setup_server_role ();
+
+$region_done = array ();
+foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	$region = $stkinfo['region'];
+	if (! isset ($region_done[$region])) {
+		$region_done[$region] = 1;
+
+		setup_vpc ($region, "10.0.0.0");
+
+		setup_security_group ($region,
+				      "sgext",
+				      array (22, 80, 443),
+				      NULL);
+		setup_security_group ($region,
+				      "sgdb",
+				      array (3306),
+				      "sgext");
+
+	}
+}
+
+$region_db_done = array ();
+foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	$region = $stkinfo['region'];
+	$db = $stkinfo['database'];
+
+	$key = sprintf ("%s|%s", $region, $db);
+	if (! isset ($region_db_done[$key])) {
+		$region_db_done[$key] = 1;
+		setup_db ($region, $db);
+	}
+}
+exit ();
+
+foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	setup_elb ($stkname, $stkinfo);
+}
+
+
+printf ("be sure to commit any modified files in %s\n", $slimstk['conf_dir']);
+ 

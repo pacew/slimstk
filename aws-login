@@ -1,0 +1,39 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+$argv = $_SERVER['argv'];
+
+if (($confdir = trim (@$argv[1])) == "") {
+	printf ("usage: aws-login confdir\n");
+	exit (1);
+}
+
+$fname = sprintf ("%s/stacks.json", $confdir);
+if (($stacks = @json_decode (file_get_contents ($fname), true)) == NULL) {
+	printf ("can't parse %s\n", $fname);
+	exit (1);
+}
+
+$fname = sprintf ("%s/access-key-%s-%s.gpg", 
+		  $confdir, $stacks['aws_acct_name'], $_SERVER['USER']);
+
+$cmd = sprintf ("gpg --quiet --decrypt --output - %s",
+		escapeshellarg ($fname));
+
+$text = trim (shell_exec ($cmd));
+
+if ($text == NULL) {
+	printf ("error running: %s\n", $cmd);
+	exit (1);
+}
+
+$text2 = preg_replace ("/[[].*[]]/", "[default]", $text);
+
+$dir = sprintf ("%s/.aws", $_SERVER['HOME']);
+system (sprintf ("mkdir -p %s; chmod 700 %s",
+		 escapeshellarg ($dir),
+		 escapeshellarg ($dir)));
+
+$dest = sprintf ("%s/credentials", $dir);
+file_put_contents ($dest, sprintf ("%s\n\n%s\n\n", $text, $text2));
+
+
