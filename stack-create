@@ -1,0 +1,45 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("./slimstk.php");
+slimstk_cmd_init ();
+
+$argv = $_SERVER['argv'];
+
+$stkname = trim (@$argv[1]);
+
+if ($stkname == "") {
+	printf ("usage: stack-config stackname\n");
+	exit (1);
+}
+
+if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
+	printf ("unknown stack %s for account %s\n",
+		$stkname, $slimstk['aws_acct_name']);
+	exit (1);
+}
+slimstk_set_region ($stkinfo['region']);
+
+$template = sprintf ("%s/stack-%s.json", $slimstk['conf_dir'], $stkname);
+
+if (! file_exists ($template)) {
+	printf ("%s not found, run:\n", $template);
+	printf ("./stack-config %s\n", $stkname);
+	exit (1);
+}
+
+
+
+$args = array ("cloudformation", "create-stack");
+$args[] = "--stack-name";
+$args[] = $stkname;
+$args[] = "--template-body";
+$args[] = sprintf ("file://%s", $template);
+$args[] = "--capabilities";
+$args[] = "CAPABILITY_IAM";
+$val = slimstk_aws ($args);
+printf ("%s\n", json_encode ($val));
+
+
+ 
+

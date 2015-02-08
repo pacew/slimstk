@@ -2,15 +2,7 @@
 <?php /* -*- mode:php -*- */
 
 require_once ("./slimstk.php");
-slimstk_bail_out_on_error ();
-
-if (($aws_acct_name = slimstk_get_logged_in_acct ()) == NULL) {
-	printf ("do slimstk-login-ACCTNAME first\n");
-	printf ("for initial bootstrapping do ./slimstk-add-acct confdir\n");
-	exit (1);
-}
-
-slimstk_set_acct ($aws_acct_name);
+slimstk_cmd_init ();
 
 function setup_role ($role_name, $policy, $trust) {
 	slimstk_set_region (NULL);
@@ -573,7 +565,26 @@ function setup_vpc ($region, $vpc_addr) {
 }
 
 function setup_kms ($region) {
+	global $slimstk;
 
+	slimstk_set_region ($region);
+
+	$alias = sprintf ("alias/%s", $slimstk['aws_acct_name']);
+	$args = array ("kms", "list-aliases");
+	$val = slimstk_aws ($args);
+	$match = 0;
+	foreach ($val['Aliases'] as $ainfo) {
+		if (strcmp ($ainfo['AliasName'], $alias) == 0) {
+			$match = 1;
+			break;
+		}
+	}
+
+	if ($match == 0) {
+		printf ("you need to use the aws console create a"
+			." key with alias %s\n", $slimstk['aws_acct_name']);
+		exit (1);
+	}
 }
 
 /* ================================================================ */

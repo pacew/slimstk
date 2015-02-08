@@ -1,0 +1,20 @@
+#! /bin/sh
+
+if [ $# != 3 ]
+then
+    echo "usage: kms-decrypt region kmsfile outfile"
+    exit 1
+fi
+
+region="$1"
+infile="$2"
+outfile="$3"
+
+aws --region ${region} kms decrypt \
+    --ciphertext-blob fileb://${infile} \
+    --query Plaintext \
+    --output text | base64 --decode > ${outfile}
+
+
+
+

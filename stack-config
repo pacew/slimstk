@@ -2,13 +2,7 @@
 <?php /* -*- mode:php -*- */
 
 require_once ("./slimstk.php");
-slimstk_bail_out_on_error ();
-
-if (($aws_acct_name = slimstk_get_logged_in_acct ()) == NULL) {
-	printf ("do aws-login first\n");
-	exit (1);
-}
-slimstk_set_acct ($aws_acct_name);
+slimstk_cmd_init ();
 
 $argv = $_SERVER['argv'];
 
@@ -20,7 +14,8 @@ if ($stkname == "") {
 }
 
 if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
-	printf ("unknown stack %s for account %s\n", $stkname, $aws_acct_name);
+	printf ("unknown stack %s for account %s\n",
+		$stkname, $slimstk['aws_acct_name']);
 	exit (1);
 }
 
@@ -51,7 +46,7 @@ $user_data .= "(echo '/^Defaults.*requiretty/s/^/#/'; echo 'w')"
 $user_data .= sprintf ("/opt/aws/bin/cfn-init"
 		       ." -v"
 		       ." --stack %s"
-		       ." --resource slimstk_launch"
+		       ." --resource launch"
 		       ." --region %s\n"
 		       ."\n",
 		       escapeshellarg ($stkname),
@@ -99,10 +94,9 @@ $files = array ();
 
 function addfile ($dst, $content, $mode = "000644") {
 	global $files;
-	if (strncmp ($dst, "/", 1) != 0)
-		$dst = sprintf ("/home/ec2-user/%s", $dst);
 
-	$files[$dst] = array (
+	$fullname = sprintf ("/home/ec2-user/slimstk-inst/%s", $dst);
+	$files[$fullname] = array (
 		'content' => $content,
 		'mode' => $mode,
 		'owner' => 'ec2-user',
@@ -112,10 +106,9 @@ function addfile ($dst, $content, $mode = "000644") {
 
 function addfile_binary ($dst, $content) {
 	global $files;
-	if (strncmp ($dst, "/", 1) != 0)
-		$dst = sprintf ("/home/ec2-user/%s", $dst);
 
-	$files[$dst] = array (
+	$fullname = sprintf ("/home/ec2-user/slimstk-inst/%s", $dst);
+	$files[$fullname] = array (
 		'content' => base64_encode ($content),
 		'encoding' => 'base64',
 		'mode' => '000644',
@@ -124,73 +117,72 @@ function addfile_binary ($dst, $content) {
 		);
 }
 
-addfile (".ssh/extra_authorized_keys", $ssh_pub_keys);
-addfile ("/var/slimstk/conf.json", json_encode ($slimstk));
+addfile ("authorized_keys", $ssh_pub_keys);
+addfile ("stacks-and-vars.json", json_encode ($slimstk));
 
-$db_passwd_kms = sprintf ("%s/dbpass.%s.%s.kms",
-			  $slimstk['conf_dir'],
-			  $aws_acct_name,
-			  $stkinfo['region'],
-			  $stkinfo['database']);
-if (! file_exists ($db_passwd_kms)) {
-	printf ("%s does not exist ... run setup-aws-acct\n", $db_passwd_kms);
+$db_passwd_kms = sprintf ("dbpass.%s.%s.%s.kms",
+			  $slimstk['aws_acct_name'],
+			  $stkinfo['database'],
+			  $stkinfo['region']);
+$src = sprintf ("%s/%s", $slimstk['conf_dir'], $db_passwd_kms);
+if (! file_exists ($src)) {
+	printf ("%s does not exist ... run setup-aws-acct\n", $src);
 	exit (1);
 }
-$dst = sprintf ("slimstk-inst/%s", $db_passwd_kms);
-addfile_binary ($dst, file_get_contents ($db_passwd_kms));
+addfile_binary ($db_passwd_kms, file_get_contents ($src));
 
 if (($f = fopen ("INST-FILES", "r")) == NULL) {
 	printf ("can't open INST-FILES\n");
 	exit (1);
 }
-while (($src = fgets ($f)) != NULL) {
-	$src = trim ($src);
-	$dst = sprintf ("slimstk-inst/%s", $src);
-	$mode = "000444";
-	if (is_executable ($src))
-		$mode = "000555";
-	addfile ($dst, file_get_contents ($src), $mode);
+while (($fname = fgets ($f)) != NULL) {
+	$fname = trim ($fname);
+	$mode = "000644";
+	if (is_executable ($fname))
+		$mode = "000755";
+	addfile ($fname, file_get_contents ($fname), $mode);
 }
-
-$app_done = array ();
 
 $ssh_config = "";
 
+$deploy_done = array ();
 foreach ($stkinfo['sites'] as $siteid => $sinfo) {
 	$app_name = preg_replace ('/-.*$/', '', $siteid);
-	if (isset ($app_done[$app_name]))
-		continue;
-	$app_done[$app_name] = 1;
-	$deploy_key_kms = sprintf ("deploy-key-%s.%s.kms",
+	$deploy_key_kms = sprintf ("deploy-%s.%s.kms",
 				   $app_name,
 				   $stkinfo['region']);
 	
+	if (isset ($deploy_done[$deploy_key_kms]))
+		continue;
+	$deploy_done[$deploy_key_kms] = 1;
+
 	$src = sprintf ("%s/%s", $slimstk['conf_dir'], $deploy_key_kms);
 	if (! file_exists ($src)) {
 		printf ("%s does not exist\n", $src);
+		printf ("you need to do:\n");
+		printf ("./make-deploy-key %s\n", $app_name);
 		exit (1);
 	}
 	
-	$dst = sprintf ("slimstk-inst/%s", $deploy_key_kms);
-	addfile_binary ($dst, file_get_contents($src));
+	addfile_binary ($deploy_key_kms, file_get_contents($src));
 
 	$ssh_config .= sprintf ("Host github-%s\n", $app_name);
 	$ssh_config .= "Hostname github.com\n";
 	$ssh_config .= "StrictHostKeyChecking no\n";
 	$ssh_config .= "UserKnownHostsFile=/dev/null\n";
 	$ssh_config .= "User git\n";
-	$ssh_config .= sprintf ("IdentityFile ~/.ssh/deploy-key-%s\n",
+	$ssh_config .= sprintf ("IdentityFile ~/.ssh/deploy-%s\n",
 				$app_name);
 	$ssh_config .= "\n";
 }
 
-addfile (".ssh/config", $ssh_config);
+addfile ("ssh_config", $ssh_config);
 
 $commands = array ();
 $commands['slimstk-init'] = array (
 	"command" => "su"
 	." --command /home/ec2-user/slimstk-inst/slimstk-init"
-	." -login"
+	." --login"
 	." ec2-user"
 	);
 
@@ -215,7 +207,7 @@ $asgroup = array ("Type" => "AWS::AutoScaling::AutoScalingGroup",
 		  "Properties" => array (
 			  "AvailabilityZones" => array ("Fn::GetAZs" => "" ),
 			  "LaunchConfigurationName" => array (
-				  "Ref" => "slimstk_launch" ),
+				  "Ref" => "launch" ),
 			  "MinSize" => "1",
 			  "MaxSize" => "2",
 			  "LoadBalancerNames" => array ( $elb_name )
@@ -247,7 +239,7 @@ $props["SecurityGroups"] = array ($sg_name);
 $props["KeyName"] = "test-key-pair";
 $props["UserData"] = array ("Fn::Base64" => $user_data);
 
-$resources["slimstk_launch"] = array (
+$resources["launch"] = array (
 	"Type" => "AWS::AutoScaling::LaunchConfiguration",
 	"Metadata" => array (
 		"AWS::CloudFormation::Init" => array ("config" => $cfn_init)),

@@ -61,6 +61,26 @@ function slimstk_set_acct ($aws_acct_name) {
 				       $aws_acct_name, $_SERVER['USER']);
 }
 
+function slimstk_cmd_init () {
+	slimstk_bail_out_on_error ();
+
+	if (($aws_acct_name = slimstk_get_logged_in_acct ()) == NULL) {
+		printf ("do aws-login first\n");
+		exit (1);
+	}
+	slimstk_set_acct ($aws_acct_name);
+}
+
+function slimstk_inst_init () {
+	global $slimstk;
+
+	slimstk_bail_out_on_error ();
+
+	$fname = sprintf ("%s/slimstk-inst/stacks-and-vars.json",
+			  $_SERVER['HOME']);
+	$slimstk = json_decode (file_get_contents ($fname), true);
+}
+
 function slimstk_set_region ($region) {
 	global $slimstk;
 	$slimstk['current_region'] = $region;
@@ -167,6 +187,28 @@ function slimstk_get_gpg_ids_for_db ($db) {
 			foreach ($stkinfo['admins'] as $user) {
 				$users[$user] = 1;
 			}
+		}
+	}
+
+	$ids = array ();
+	foreach ($users as $user => $dummy) {
+		if (($id = slimstk_get_gpg_id ($user)) == NULL) {
+			printf ("can't find gpg id for user %s\n", $user);
+			exit (1);
+		}
+		$ids[$id] = 1;
+	}
+
+	return (array_keys ($ids));
+}
+
+function slimstk_get_gpg_ids_for_app ($app_name) {
+	global $slimstk;
+
+	$users = array ();
+	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+		foreach ($stkinfo['admins'] as $user) {
+			$users[$user] = 1;
 		}
 	}
 

@@ -1,0 +1,7 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("./slimstk.php");
+slimstk_inst_init ();
+
+printf ("hello\n");

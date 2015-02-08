@@ -1,0 +1,53 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("./slimstk.php");
+slimstk_cmd_init ();
+
+$argv = $_SERVER['argv'];
+$app_name = @$argv[1];
+
+if ($app_name == "") {
+	printf ("usage: make-deploy-key app_name\n");
+	exit (1);
+}
+
+$comment = sprintf ("stacks github deploy key for %s %s",
+		    $app_name, strftime ("%Y-%m-%d %H:%M:%S"));
+$keyname_base = sprintf ("%s/deploy-%s", $slimstk['conf_dir'], $app_name);
+$keyname_pub = sprintf ("%s.pub", $keyname_base);
+$keyname_gpg = sprintf ("%s.gpg", $keyname_base);
+
+@unlink ($keyname_base);
+@unlink ($keyname_pub);
+$cmd = sprintf ("ssh-keygen -q -t rsa -f %s -N '' -C %s",
+		escapeshellarg ($keyname_base),
+		escapeshellarg ($comment));
+printf ("running: %s\n", $cmd);
+system ($cmd, $rc);
+if ($rc != 0)
+	exit (1);
+
+$gpg_ids = slimstk_get_gpg_ids_for_app ($app_name);
+$cmd = sprintf ("gpg --encrypt --output %s",
+		escapeshellarg ($keyname_gpg));
+foreach ($gpg_ids as $key_id) {
+	$cmd .= sprintf (" --recipient %s",
+			 escapeshellarg ($key_id));
+}
+
+$cmd .= sprintf (" %s", escapeshellarg ($keyname_base));
+
+@unlink ($keyname_gpg);
+system ($cmd, $rc);
+if ($rc != 0) {
+	printf ("error running: %s\n", $cmd);
+	exit (1);
+}
+
+@unlink ($keyname_base);
+
+printf ("put %s on github\n", $keyname_pub);
+
+printf ("you need to run:\n");
+printf ("./update-kms\n");

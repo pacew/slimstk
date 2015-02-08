@@ -10,6 +10,12 @@ if (($confdir = @$argv[1]) == "") {
 	printf ("usage: slimstk-add-acct confdir\n");
 	exit (1);
 }
+
+if (strncmp ($confdir, "/", 1) != 0) {
+	printf ("must give absolute path to confdir\n");
+	exit (1);
+}
+
 $confdir = rtrim ($confdir, "/");
 
 $fname = sprintf ("%s/stacks.json", $confdir);
@@ -30,6 +36,8 @@ file_put_contents ($cfile, $confdir."\n");
 
 printf ("logging into aws account %s\n", $aws_acct_name);
 
-$cmd = sprintf ("./slimstk-login %s\n", $confdir);
-system ($cmd);
+$cmd = sprintf ("slimstk-login %s", $confdir);
+printf ("now do:\n");
+printf ("%s\n", $cmd);
+
 
