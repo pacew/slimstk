@@ -5,8 +5,9 @@ $slimstk = NULL;
 function slimstk_get_logged_in_acct () {
 	$fname = sprintf ("%s/.aws/credentials", $_SERVER['HOME']);
 	$text = file_get_contents ($fname);
-	if ( ! preg_match ('/[[]([^-]*)-(.*)[[]/', $text, $parts))
+	if ( ! preg_match ('/[[](.*)-(.*)[]]/', $text, $parts))
 		return (NULL);
+
 	$aws_acct_name = $parts[1];
 	$user = $parts[2];
 
@@ -136,6 +137,9 @@ function slimstk_err ($errno, $errstr, $errfile, $errline, $errcontext) {
 		return (FALSE);
 	printf ("%s:%d: error (%d): %s\n",
 		$errfile, $errline, $errno, $errstr);
+	foreach (debug_backtrace () as $frame) {
+		printf ("%s:%d\n", $frame['file'], $frame['line']);
+	}
 	exit (1);
 }
 

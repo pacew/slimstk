@@ -10,6 +10,7 @@ if (($confdir = @$argv[1]) == "") {
 	printf ("usage: slimstk-add-acct confdir\n");
 	exit (1);
 }
+$confdir = rtrim ($confdir, "/");
 
 $fname = sprintf ("%s/stacks.json", $confdir);
 if (! file_exists ($fname)) {

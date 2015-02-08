@@ -2,6 +2,7 @@
 <?php /* -*- mode:php -*- */
 
 require_once ("./slimstk.php");
+slimstk_bail_out_on_error ();
 
 if (($aws_acct_name = slimstk_get_logged_in_acct ()) == NULL) {
 	printf ("do aws-login first\n");
@@ -14,7 +15,7 @@ $argv = $_SERVER['argv'];
 $stkname = trim (@$argv[1]);
 
 if ($stkname == "") {
-	printf ("usage: mkstack stackname\n");
+	printf ("usage: stack-config stackname\n");
 	exit (1);
 }
 
@@ -22,6 +23,9 @@ if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
 	printf ("unknown stack %s for account %s\n", $stkname, $aws_acct_name);
 	exit (1);
 }
+
+$region = $stkinfo['region'];
+slimstk_set_region ($region);
 
 $instance_profile_name = sprintf ("%sprofile", $stkname);
 
@@ -40,13 +44,6 @@ if ($sg_name == "" || $db_host == "") {
 $elb_name = sprintf ("%selb", $stkname);
 $asgroup_name = sprintf ("%sasgroup", $stkname);
 
-$stacks_vars = array ();
-$stacks_vars['STACKS_AWS_ACCT_NAME'] = $aws_acct_name;
-$stacks_vars['STACKS_STACK_NAME'] = $stkname;
-$stacks_vars['STACKS_REGION'] = $region;
-$stacks_vars['STACKS_ASGROUP_NAME'] = $asgroup_name;
-$stacks_vars['STACKS_DB_HOST'] = $db_host;
-
 $user_data = "#! /bin/bash -xe\n";
 $user_data  .= "yum update -y aws-cfn-bootstrap\n";
 $user_data .= "(echo '/^Defaults.*requiretty/s/^/#/'; echo 'w')"
@@ -55,7 +52,7 @@ $user_data .= sprintf ("/opt/aws/bin/cfn-init"
 		       ." -v"
 		       ." --stack %s"
 		       ." --resource slimstk_launch"
-		       ." --region $STACKS_REGION\n"
+		       ." --region %s\n"
 		       ."\n",
 		       escapeshellarg ($stkname),
 		       escapeshellarg ($region));
@@ -85,7 +82,7 @@ $packages = array ("yum" => $yum);
 
 $ssh_pub_keys = "";
 foreach ($stkinfo['admins'] as $username) {
-	$fname = sprintf ("sshkey-%s.pub", $username);
+	$fname = sprintf ("%s/sshkey-%s.pub", $slimstk['conf_dir'], $username);
 	$pub = @file_get_contents ($fname);
 	if ($pub == "") {
 		printf ("mssing %s\n", $fname);

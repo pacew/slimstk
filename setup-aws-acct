@@ -572,6 +572,10 @@ function setup_vpc ($region, $vpc_addr) {
 	slimstk_putvar_region ("vpc_id", $vpc_id);
 }
 
+function setup_kms ($region) {
+
+}
+
 /* ================================================================ */
 
 setup_aws_login ();
@@ -581,21 +585,23 @@ setup_server_role ();
 $region_done = array ();
 foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 	$region = $stkinfo['region'];
-	if (! isset ($region_done[$region])) {
-		$region_done[$region] = 1;
+	if (isset ($region_done[$region]))
+		continue;
 
-		setup_vpc ($region, "10.0.0.0");
+	$region_done[$region] = 1;
 
-		setup_security_group ($region,
-				      "sgext",
-				      array (22, 80, 443),
-				      NULL);
-		setup_security_group ($region,
-				      "sgdb",
-				      array (3306),
-				      "sgext");
+	setup_vpc ($region, "10.0.0.0");
 
-	}
+	setup_security_group ($region,
+			      "sgext",
+			      array (22, 80, 443),
+			      NULL);
+	setup_security_group ($region,
+			      "sgdb",
+			      array (3306),
+			      "sgext");
+
+	setup_kms ($region);
 }
 
 $region_db_done = array ();

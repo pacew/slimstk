@@ -14,8 +14,43 @@ if (($stacks = @json_decode (file_get_contents ($fname), true)) == NULL) {
 	exit (1);
 }
 
+$user = $_SERVER['USER'];
+
 $fname = sprintf ("%s/access-key-%s-%s.gpg", 
-		  $confdir, $stacks['aws_acct_name'], $_SERVER['USER']);
+		  $confdir, $stacks['aws_acct_name'], $user);
+
+$stdin = fopen ("php://stdin", "r");
+$stdout = fopen ("php://stdout", "w");
+
+if (! file_exists ($fname)) {
+	printf ("need access_key and secret_access_key for %s on %s\n",
+		$user, $stacks['aws_acct_name']);
+	printf ("access_key_id: ");
+	flush ();
+	$access_key_id = trim (fgets ($stdin));
+	printf ("got %s\n", $access_key_id);
+	exit ();
+	printf ("secret_access_key: ");
+	$secret_access_key = trim (fgets ($stdin));
+	
+	$text = sprintf ("[%s-%s]\n", $acct, $user);
+	$text .= sprintf ("aws_access_key_id = %s\n", $access_key_id);
+	$text .= sprintf ("aws_secret_access_key = %s\n",
+			  $secret_access_key);
+		
+	$cleartext_file = "DANGER.clear";
+	file_put_contents ($cleartext_file, $text);
+	$cmd = sprintf ("gpg --encrypt --output %s --recipient %s %s",
+			escapeshellarg ($access_key_gpg),
+			escapeshellarg ($gpg_key_id),
+			escapeshellarg ($cleartext_file));
+	system ($cmd, $rc);
+	@unlink ($cleartext_file);
+	if ($rc != 0) {
+		printf ("error storing %s\n", $access_key_gpg);
+		exit (1);
+	}
+}
 
 $cmd = sprintf ("gpg --quiet --decrypt --output - %s",
 		escapeshellarg ($fname));
