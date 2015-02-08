@@ -1,0 +1,288 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("./slimstk.php");
+
+if (($aws_acct_name = slimstk_get_logged_in_acct ()) == NULL) {
+	printf ("do aws-login first\n");
+	exit (1);
+}
+slimstk_set_acct ($aws_acct_name);
+
+$argv = $_SERVER['argv'];
+
+$stkname = trim (@$argv[1]);
+
+if ($stkname == "") {
+	printf ("usage: mkstack stackname\n");
+	exit (1);
+}
+
+if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
+	printf ("unknown stack %s for account %s\n", $stkname, $aws_acct_name);
+	exit (1);
+}
+
+$instance_profile_name = sprintf ("%sprofile", $stkname);
+
+$image_id = "ami-b66ed3de";
+
+$sg_name = slimstk_getvar_region ("sgext.groupid");
+
+$key = sprintf ("dbhost.%s", $stkinfo['database']);
+$db_host = slimstk_getvar_region ($key);
+
+if ($sg_name == "" || $db_host == "") {
+	printf ("you need to run ./setup-aws-acct\n");
+	exit (1);
+}
+
+$elb_name = sprintf ("%selb", $stkname);
+$asgroup_name = sprintf ("%sasgroup", $stkname);
+
+$stacks_vars = array ();
+$stacks_vars['STACKS_AWS_ACCT_NAME'] = $aws_acct_name;
+$stacks_vars['STACKS_STACK_NAME'] = $stkname;
+$stacks_vars['STACKS_REGION'] = $region;
+$stacks_vars['STACKS_ASGROUP_NAME'] = $asgroup_name;
+$stacks_vars['STACKS_DB_HOST'] = $db_host;
+
+$user_data = "#! /bin/bash -xe\n";
+$user_data  .= "yum update -y aws-cfn-bootstrap\n";
+$user_data .= "(echo '/^Defaults.*requiretty/s/^/#/'; echo 'w')"
+	." | ed /etc/sudoers\n";
+$user_data .= sprintf ("/opt/aws/bin/cfn-init"
+		       ." -v"
+		       ." --stack %s"
+		       ." --resource slimstk_launch"
+		       ." --region $STACKS_REGION\n"
+		       ."\n",
+		       escapeshellarg ($stkname),
+		       escapeshellarg ($region));
+$user_data .= sprintf ("/opt/aws/bin/cfn-signal"
+		       ." -e \$?"
+		       ." --stack %s"
+		       ." --resource %s"
+		       ." --region %s\n",
+		       escapeshellarg ($stkname),
+		       escapeshellarg ($asgroup_name),
+		       escapeshellarg ($region));
+
+$yum = array (
+	"mysql" => array (),
+	"mysql-server" => array (),
+	"mysql-libs" => array (),
+	"httpd" => array (),
+	"php" => array (),
+	"php-mysql" => array (),
+	"emacs" => array (),
+	"aws-cli" => array (),
+	"git" => array (),
+	"mod_ssl" => array (),
+	"php-pecl-xdebug" => array ()
+	);
+$packages = array ("yum" => $yum);
+
+$ssh_pub_keys = "";
+foreach ($stkinfo['admins'] as $username) {
+	$fname = sprintf ("sshkey-%s.pub", $username);
+	$pub = @file_get_contents ($fname);
+	if ($pub == "") {
+		printf ("mssing %s\n", $fname);
+		exit (1);
+	}
+	$pub = trim ($pub)."\n";
+	$ssh_pub_keys .= $pub;
+}
+
+$home_inst = "/home/ec2-user";
+$slimstk_inst = sprintf ("%s/slimstk-inst", $home_inst);
+
+$files = array ();
+
+function addfile ($dst, $content, $mode = "000644") {
+	global $files;
+	if (strncmp ($dst, "/", 1) != 0)
+		$dst = sprintf ("/home/ec2-user/%s", $dst);
+
+	$files[$dst] = array (
+		'content' => $content,
+		'mode' => $mode,
+		'owner' => 'ec2-user',
+		'group' => 'ec2-user'
+		);
+}
+
+function addfile_binary ($dst, $content) {
+	global $files;
+	if (strncmp ($dst, "/", 1) != 0)
+		$dst = sprintf ("/home/ec2-user/%s", $dst);
+
+	$files[$dst] = array (
+		'content' => base64_encode ($content),
+		'encoding' => 'base64',
+		'mode' => '000644',
+		'owner' => 'ec2-user',
+		'group' => 'ec2-user'
+		);
+}
+
+addfile (".ssh/extra_authorized_keys", $ssh_pub_keys);
+addfile ("/var/slimstk/conf.json", json_encode ($slimstk));
+
+$db_passwd_kms = sprintf ("%s/dbpass.%s.%s.kms",
+			  $slimstk['conf_dir'],
+			  $aws_acct_name,
+			  $stkinfo['region'],
+			  $stkinfo['database']);
+if (! file_exists ($db_passwd_kms)) {
+	printf ("%s does not exist ... run setup-aws-acct\n", $db_passwd_kms);
+	exit (1);
+}
+$dst = sprintf ("slimstk-inst/%s", $db_passwd_kms);
+addfile_binary ($dst, file_get_contents ($db_passwd_kms));
+
+if (($f = fopen ("INST-FILES", "r")) == NULL) {
+	printf ("can't open INST-FILES\n");
+	exit (1);
+}
+while (($src = fgets ($f)) != NULL) {
+	$src = trim ($src);
+	$dst = sprintf ("slimstk-inst/%s", $src);
+	$mode = "000444";
+	if (is_executable ($src))
+		$mode = "000555";
+	addfile ($dst, file_get_contents ($src), $mode);
+}
+
+$app_done = array ();
+
+$ssh_config = "";
+
+foreach ($stkinfo['sites'] as $siteid => $sinfo) {
+	$app_name = preg_replace ('/-.*$/', '', $siteid);
+	if (isset ($app_done[$app_name]))
+		continue;
+	$app_done[$app_name] = 1;
+	$deploy_key_kms = sprintf ("deploy-key-%s.%s.kms",
+				   $app_name,
+				   $stkinfo['region']);
+	
+	$src = sprintf ("%s/%s", $slimstk['conf_dir'], $deploy_key_kms);
+	if (! file_exists ($src)) {
+		printf ("%s does not exist\n", $src);
+		exit (1);
+	}
+	
+	$dst = sprintf ("slimstk-inst/%s", $deploy_key_kms);
+	addfile_binary ($dst, file_get_contents($src));
+
+	$ssh_config .= sprintf ("Host github-%s\n", $app_name);
+	$ssh_config .= "Hostname github.com\n";
+	$ssh_config .= "StrictHostKeyChecking no\n";
+	$ssh_config .= "UserKnownHostsFile=/dev/null\n";
+	$ssh_config .= "User git\n";
+	$ssh_config .= sprintf ("IdentityFile ~/.ssh/deploy-key-%s\n",
+				$app_name);
+	$ssh_config .= "\n";
+}
+
+addfile (".ssh/config", $ssh_config);
+
+$commands = array ();
+$commands['slimstk-init'] = array (
+	"command" => "su"
+	." --command /home/ec2-user/slimstk-inst/slimstk-init"
+	." -login"
+	." ec2-user"
+	);
+
+$services = array (
+	"sysvinit" => array (
+		"httpd" => array ("enabled" => "true",
+				  "ensureRunning" => "true")
+		)
+	);
+
+/* http://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-init.html */
+/* order: packages groups users sources files commands services  */
+$cfn_init = array ();
+$cfn_init["packages"] = $packages;
+$cfn_init["files"] = $files;
+$cfn_init["commands"] = $commands;
+$cfn_init["services"] = $services;
+
+$resources = array ();
+
+$asgroup = array ("Type" => "AWS::AutoScaling::AutoScalingGroup",
+		  "Properties" => array (
+			  "AvailabilityZones" => array ("Fn::GetAZs" => "" ),
+			  "LaunchConfigurationName" => array (
+				  "Ref" => "slimstk_launch" ),
+			  "MinSize" => "1",
+			  "MaxSize" => "2",
+			  "LoadBalancerNames" => array ( $elb_name )
+			  ),
+		  "UpdatePolicy" => array (
+			  "AutoScalingRollingUpdate" => array (
+				  "MinInstancesInService" => "1",
+				  "MaxBatchSize" => "1",
+				  "PauseTime" => "PT15M",
+				  "WaitOnResourceSignals" => "true"
+				  )
+			  )
+	);
+
+$time_limit_minutes = 10;
+if (0 && $time_limit_minutes) {
+	$val = sprintf ("PT%dM", $time_limit_minutes);
+	$asgroup["CreationPolicy"] = array ("ResourceSignal" =>
+					array ("Timeout" => $val));
+}
+
+$resources[$asgroup_name] = $asgroup;
+
+$props = array ();
+$props['IamInstanceProfile'] = array ("Ref" => $instance_profile_name);
+$props["ImageId"] = $image_id;
+$props["InstanceType"] = "t2.micro";
+$props["SecurityGroups"] = array ($sg_name);
+$props["KeyName"] = "test-key-pair";
+$props["UserData"] = array ("Fn::Base64" => $user_data);
+
+$resources["slimstk_launch"] = array (
+	"Type" => "AWS::AutoScaling::LaunchConfiguration",
+	"Metadata" => array (
+		"AWS::CloudFormation::Init" => array ("config" => $cfn_init)),
+	"Properties" => $props
+	);
+
+
+/* ================================================================ */
+
+$props = array ();
+$props['Path'] = "/";
+$props['Roles'] = array ( "server" );
+
+$resources[$instance_profile_name] = array (
+	"Type" => "AWS::IAM::InstanceProfile",
+	"Properties" => $props);
+
+/* ================================================================ */
+
+$outputs = array ();
+
+$cform = array ();
+$cform["AWSTemplateFormatVersion"] = "2010-09-09";
+$cform["Description"] = $stkname;
+$cform["Resources"] = $resources;
+
+if (count ($outputs) > 0)
+	$cform["Outputs"] = $outputs;
+
+$outname = sprintf ("%s/stack-%s.json", $slimstk['conf_dir'], $stkname);
+file_put_contents ($outname, json_encode ($cform));
+
+
+printf ("output in %s\n", $outname);
+printf ("be sure to commit it over there\n");

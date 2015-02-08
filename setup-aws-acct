@@ -1,25 +1,14 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
-$argv = $_SERVER['argv'];
-
-$aws_acct_name = trim (@$argv[1]);
-$aws_acct_name = "pacew";
-
-$cfile = sprintf ("confdir-%s", $aws_acct_name);
-if (! file_exists ($cfile)) {
-	printf ("enter directory for slimstk conf for acct %s: ",
-		$aws_acct_name);
-	$stdin = fopen ("php://stdin", "r");
-	$dirname = trim (fgets ($stdin));
-	if (! file_exists ($dirname)) {
-		printf ("%s does not exist\n", $dirname);
-		exit (1);
-	}
-	file_put_contents ($cfile, $dirname . "\n");
-}
 
 require_once ("./slimstk.php");
 slimstk_bail_out_on_error ();
+
+if (($aws_acct_name = slimstk_get_logged_in_acct ()) == NULL) {
+	printf ("do slimstk-login-ACCTNAME first\n");
+	printf ("for initial bootstrapping do ./slimstk-add-acct confdir\n");
+	exit (1);
+}
 
 slimstk_set_acct ($aws_acct_name);
 
@@ -437,11 +426,11 @@ function setup_aws_login () {
 		}
 	}
 					
-	$lfile = sprintf ("%s/bin/aws-login-%s",
+	$lfile = sprintf ("%s/bin/slimstk-login-%s",
 			  $_SERVER['HOME'], $slimstk['aws_acct_name']);
 
 	$text = "#! /bin/sh\n";
-	$prog = sprintf ("%s/aws-login", getcwd ());
+	$prog = sprintf ("%s/slimstk-login", getcwd ());
 	$text .= sprintf ("%s %s\n",
 			  escapeshellarg ($prog),
 			  escapeshellarg ($slimstk['conf_dir']));

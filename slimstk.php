@@ -2,6 +2,20 @@
 
 $slimstk = NULL;
 
+function slimstk_get_logged_in_acct () {
+	$fname = sprintf ("%s/.aws/credentials", $_SERVER['HOME']);
+	$text = file_get_contents ($fname);
+	if ( ! preg_match ('/[[]([^-]*)-(.*)[[]/', $text, $parts))
+		return (NULL);
+	$aws_acct_name = $parts[1];
+	$user = $parts[2];
+
+	if (strcmp ($_SERVER['USER'], $user) != 0)
+		return (NULL);
+
+	return ($aws_acct_name);
+}
+
 function slimstk_set_acct ($aws_acct_name) {
 	global $slimstk;
 

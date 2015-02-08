@@ -1,0 +1,34 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("./slimstk.php");
+slimstk_bail_out_on_error ();
+
+$argv = $_SERVER['argv'];
+
+if (($confdir = @$argv[1]) == "") {
+	printf ("usage: slimstk-add-acct confdir\n");
+	exit (1);
+}
+
+$fname = sprintf ("%s/stacks.json", $confdir);
+if (! file_exists ($fname)) {
+	printf ("%s does not exist\n");
+	exit (1);
+}
+
+if (($slimstk = @json_decode (file_get_contents ($fname), true)) == NULL) {
+	printf ("can't parse %s\n", $fname);
+	exit (1);
+}
+
+$aws_acct_name = $slimstk['aws_acct_name'];
+
+$cfile = sprintf ("confdir-%s", $aws_acct_name);
+file_put_contents ($cfile, $confdir."\n");
+
+printf ("logging into aws account %s\n", $aws_acct_name);
+
+$cmd = sprintf ("./slimstk-login %s\n", $confdir);
+system ($cmd);
+
