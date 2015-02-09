@@ -74,10 +74,11 @@ function slimstk_cmd_init () {
 function slimstk_init () {
 	global $slimstk;
 
-	slimstk_bail_out_on_error ();
-
 	$fname = "/var/slimstk/stacks-and-vars.json";
 	$slimstk = json_decode (file_get_contents ($fname), true);
+
+	unset ($slimstk['conf_dir']);
+	unset ($slimstk['profile']);
 }
 
 function slimstk_set_region ($region) {
@@ -120,10 +121,13 @@ function slimstk_putvar_region ($key, $val) {
 function slimstk_aws ($args, $ignore_errors = 0) {
 	global $slimstk;
 
-	$cmd = sprintf ("aws --profile %s",
-			escapeshellarg ($slimstk['profile']));
+	$cmd = "aws";
+	if (@$slimstk['profile']) {
+		$cmd .= sprintf (" --profile %s",
+				 escapeshellarg ($slimstk['profile']));
+	}
 
-	if ($slimstk['current_region']) {
+	if (@$slimstk['current_region']) {
 		$cmd .= sprintf (" --region %s",
 				 escapeshellarg ($slimstk['current_region']));
 	}

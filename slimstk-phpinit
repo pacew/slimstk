@@ -8,23 +8,38 @@ slimstk_bail_out_on_error ();
 if (($stkname = @$slimstk['stkname']) == "")
 	$stkname = "pw1";
 
-$stkinfo = $slimstk['stacks'][$stkname];
+printf ("setup for stack %s\n", $stkname);
 
-printf ("setup for stack %s\n", $stkinfo);
+$stkinfo = $slimstk['stacks'][$stkname];
 
 $region = $stkinfo['region'];
 
 $instdir = sprintf ("%s/slimstk-inst", $_SERVER['HOME']);
 
-foreach ($slimstk['apps'] as $app_name => $app_info) {
-	$keyname = sprintf ("deploy-%s", $app_name);
-	$kms_name = sprintf ("%s/%s.%s.kms", $instdir, $keyname, $region);
-	if (file_exists ($kms_name)) {
-		$dst = sprintf ("%s/.ssh/%s", $_SERVER['HOME'], $keyname);
-		$cmd = sprintf ("./kms-decrypt %s %s %s",
-				escapeshellarg ($region),
-				escapeshellarg ($kms_name),
-				escapeshellarg ($dst));
-		system ($cmd);
+function setup_deploy_keys () {
+	foreach ($slimstk['apps'] as $app_name => $app_info) {
+		$keyname = sprintf ("deploy-%s", $app_name);
+		$kms_name = sprintf ("%s/%s.%s.kms",
+				     $instdir, $keyname, $region);
+		if (file_exists ($kms_name)) {
+			$dst = sprintf ("%s/.ssh/%s",
+					$_SERVER['HOME'], $keyname);
+			$cmd = sprintf ("./kms-decrypt %s %s %s",
+					escapeshellarg ($region),
+					escapeshellarg ($kms_name),
+					escapeshellarg ($dst));
+			system ($cmd);
+		}
 	}
 }
+
+function setup_dns () {
+	global $slimstk, $stkinfo;
+
+	$args = array ("route53", "list-hosted-zones");
+	$val = slimstk_aws ($args);
+	var_dump ($val);
+}
+
+// setup_deploy_keys ();
+setup_dns ();
