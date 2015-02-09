@@ -9,7 +9,7 @@ $argv = $_SERVER['argv'];
 $stkname = trim (@$argv[1]);
 
 if ($stkname == "") {
-	printf ("usage: stack-create stackname\n");
+	printf ("usage: stack-delete stackname\n");
 	exit (1);
 }
 
@@ -30,13 +30,9 @@ if (! file_exists ($template)) {
 
 
 
-$args = array ("cloudformation", "create-stack");
+$args = array ("cloudformation", "delete-stack");
 $args[] = "--stack-name";
 $args[] = $stkname;
-$args[] = "--template-body";
-$args[] = sprintf ("file://%s", $template);
-$args[] = "--capabilities";
-$args[] = "CAPABILITY_IAM";
 $val = slimstk_aws ($args);
 printf ("%s\n", json_encode ($val));
 

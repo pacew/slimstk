@@ -202,13 +202,18 @@ function slimstk_get_gpg_ids_for_db ($db) {
 	return (array_keys ($ids));
 }
 
-function slimstk_get_gpg_ids_for_app ($app_name) {
+function slimstk_get_gpg_ids_for_app ($for_app_name) {
 	global $slimstk;
 
 	$users = array ();
 	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-		foreach ($stkinfo['admins'] as $user) {
-			$users[$user] = 1;
+		foreach ($stkinfo['sites'] as $siteid => $sinfo) {
+			$app_name = preg_replace ('/-.*/', '', $siteid);
+			if (strcmp ($app_name, $for_app_name) == 0) {
+				foreach ($stkinfo['admins'] as $user) {
+					$users[$user] = 1;
+				}
+			}
 		}
 	}
 

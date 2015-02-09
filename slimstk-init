@@ -1,18 +1,29 @@
 #! /bin/sh -xe
 
-# this runs once upon boot in a new instance
 # user is ec2-user
 # sudo works
 
-cd $HOME/slimstk-inst
+if [ -d $HOME/slimstk ]
+then
+    # development mode
+    cd $HOME/slimstk
+else
+    # we're running from cloudformation
+    cd $HOME/slimstk-inst
+fi
+
+instdir=$HOME/slimstk-inst
 
 chmod a+rx $HOME
 
 sudo yum -y update aws-cli
 
+sudo mkdir -p /var/slimstk
 sudo chown -R ec2-user /var/slimstk
 
-# cp authorized_keys $HOME/.ssh/authorized_keys
+mkdir -p $HOME/.ssh
+chmod 700 $HOME/.ssh
+cp ${instdir}/authorized_keys $HOME/.ssh/authorized_keys
 
 sudo mkdir -p /www/blank
 sudo cp /dev/null /var/blank/index.html
@@ -22,7 +33,8 @@ mkdir -p $HOME/sites-enabled
 grep '# slimstk config' /etc/httpd/conf/httpd.conf > /dev/null 2>&1
 if [ $? != 0 ]
 then
-    sudo sh -c "cat httpd-extra.conf >> /etc/httpd/conf/httpd.conf"
+    sudo sh -c "cat $HOME/slimstk-inst/httpd-extra.conf \
+ >> /etc/httpd/conf/httpd.conf"
 fi
 
 ./slimstk-phpinit

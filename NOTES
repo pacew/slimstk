@@ -1,0 +1,29 @@
+to do development on slimstk itself on an instance:
+
+git clone https://github.com/pacew/slimstk.git
+
+$dir = opendir ($slimstk_dir);
+$tail = sprintf (".%s.kms", $stklib['region']);
+$taillen = strlen ($tail);
+while (($kms_name = readdir ($dir)) != NULL) {
+	if (strcmp (substr ($kms_name, - $taillen), $tail) == 0) {
+		$name = substr ($kms_name, 0, - $taillen);
+
+		$cmd = sprintf ("%s/kms-decrypt %s %s %s",
+				$slimstk_dir, 
+				$slimstk['region'],
+				$kms_name,
+				$name);
+		system ($cmd);
+	}
+}
+
+foreach ($slimstk['apps'] as $app_name => $app_info) {
+	$keyname = sprintf ("deploy-%s", $app_name);
+	$from = sprintf ("%s/%s", $slimstk_dir, $keyname);
+	if (file_exists ($from)) {
+		$to = sprintf ("%s/.ssh/%s", $homedir, $keyname);
+		rename ($from, $to);
+		chmod ($to, 0600);
+	}
+}

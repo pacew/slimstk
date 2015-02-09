@@ -24,7 +24,19 @@ slimstk_set_region ($region);
 
 $instance_profile_name = sprintf ("%sprofile", $stkname);
 
-$image_id = "ami-b66ed3de";
+/* http://aws.amazon.com/amazon-linux-ami/ */
+/* we use Amazon Linux HVM EBS-Backed 64-bit */
+/* first experiments were with "ami-b66ed3de" */
+
+$images = array ();
+$images['us-east-1'] = "ami-146e2a7c"; /* AMI 2014.09.2 released 2015-01-29 */
+$images['us-west-2'] = "ami-dfc39aef"; /* AMI 2014.09.2 released 2015-01-29 */
+$images['us-west-1'] = "ami-42908907"; /* AMI 2014.09.2 released 2015-01-29 */
+
+if (($image_id = @$images[$region]) == NULL) {
+	printf ("can't find AMI image id - you need to update stack-config\n");
+	exit (1);
+}
 
 $sg_name = slimstk_getvar_region ("sgext.groupid");
 
