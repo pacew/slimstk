@@ -13,10 +13,13 @@ printf ("setup for stack %s\n", $stkname);
 $stkinfo = $slimstk['stacks'][$stkname];
 
 $region = $stkinfo['region'];
+slimstk_set_region ($region);
 
 $instdir = sprintf ("%s/slimstk-inst", $_SERVER['HOME']);
 
 function setup_deploy_keys () {
+	global $slimstk;
+	global $instdir;
 	foreach ($slimstk['apps'] as $app_name => $app_info) {
 		$keyname = sprintf ("deploy-%s", $app_name);
 		$kms_name = sprintf ("%s/%s.%s.kms",
@@ -34,12 +37,107 @@ function setup_deploy_keys () {
 }
 
 function setup_dns () {
-	global $slimstk, $stkinfo;
+	global $slimstk, $stkname, $stkinfo;
+
+	if (($server_domain = @$stkinfo['server_domain']) == "")
+		return;
 
 	$args = array ("route53", "list-hosted-zones");
 	$val = slimstk_aws ($args);
-	var_dump ($val);
+	$hosted_zone_id = "";
+	foreach ($val['HostedZones'] as $zinfo) {
+		$zname = rtrim ($zinfo['Name'], '.');
+		if (strcmp ($zname, $server_domain) == 0) {
+			$hosted_zone_id = $zinfo['Id'];
+			break;
+		}
+	}
+
+	if ($hosted_zone_id == "") {
+		printf ("setup_dns: %s not found in route53\n",
+			$server_domain);
+		return;
+	}
+
+	$val = slimstk_get_aws_param ("/meta-data/placement/availability-zone");
+	$zone_letter = substr ($val, -1);
+
+	$public_ipv4 = slimstk_get_aws_param ("/meta-data/public-ipv4");
+
+	$abs_name = sprintf ("%s%s.%s.",
+			     $stkname, $zone_letter, $server_domain);
+
+	printf ("%s => %s\n", $abs_name, $public_ipv4);
+
+	$items = array ();
+	$items[] = array ("Action" => "UPSERT", 
+			  "ResourceRecordSet" => array (
+				  "Name" => $abs_name, 
+				  "Type" => "A", 
+				  "TTL" => 30, 
+				  "ResourceRecords" => array (
+					  array ("Value" => $public_ipv4)
+					  )
+				  )
+		);
+
+	$change_batch = array ("Changes" => $items);
+
+	$args = array ("route53", "change-resource-record-sets");
+	$args[] = "--hosted-zone-id";
+	$args[] = $hosted_zone_id;
+	$args[] = "--change-batch";
+	$args[] = json_encode ($change_batch);
+	slimstk_aws ($args);
+}
+
+function setup_db_access () {
+	global $slimstk, $stkname, $stkinfo;
+	global $instdir, $region;
+
+	$database = $stkinfo['database'];
+
+	$db_passwd_base = sprintf ("dbpass.%s.%s",
+				   $slimstk['aws_acct_name'], $database);
+
+	$db_passwd_kms = sprintf ("%s/%s.%s.kms",
+				  $instdir, $db_passwd_base, $region);
+
+	if (! file_exists ($db_passwd_kms)) {
+		printf ("%s does not exist\n", $db_passwd_kms);
+		return;
+	}
+
+	$cmd = sprintf ("aws --region %s kms decrypt"
+			." --ciphertext-blob fileb://%s"
+			." --query Plaintext"
+			." --output text",
+			escapeshellarg ($region),
+			escapeshellarg ($db_passwd_kms));
+	$val_base64 = shell_exec ($cmd);
+	$db_passwd = trim (base64_decode ($val_base64));
+
+	$db_host = slimstk_getvar_region ("dbhost.db");
+
+	$text = sprintf ("[client]\n"
+			 ."user=root\n"
+			 ."host=%s\n"
+			 ."password=%s\n",
+			 $db_host, $db_passwd);
+	$fname = sprintf ("%s/.my.cnf", $_SERVER['HOME']);
+	file_put_contents ($fname, $text);
+	chmod ($fname, 0600);
+
+	$text = sprintf ("<?php\n"
+			 ."\$default_dbparams = array (\n"
+			 ." 'host' => '%s',\n"
+			 ." 'user' => 'root',\n"
+			 ." 'passwd' => '%s'\n"
+			 .");\n",
+			 $db_host, $db_passwd);
+	file_put_contents ("/var/slimstk/dbparams.php", $text);
 }
 
 // setup_deploy_keys ();
-setup_dns ();
+// setup_dns ();
+setup_db_access ();

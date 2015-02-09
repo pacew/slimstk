@@ -154,6 +154,10 @@ function slimstk_aws ($args, $ignore_errors = 0) {
 	return (json_decode ($output, true));
 }
 
+function slimstk_get_aws_param ($path) {
+	$fname = sprintf ("http://169.254.169.254/latest%s", $path);
+	return (file_get_contents ($fname));
+}
 
 function slimstk_err ($errno, $errstr, $errfile, $errline, $errcontext) {
 	if (! error_reporting ())

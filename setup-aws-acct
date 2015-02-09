@@ -219,7 +219,6 @@ function setup_db ($region, $database) {
 
 	printf ("passwd %s\n", $db_passwd);
 
-
 	$args = array ("rds", "create-db-instance");
 	$args[] = "--db-instance-identifier";
 	$args[] = $database;
@@ -227,6 +226,8 @@ function setup_db ($region, $database) {
 	$args[] = "5"; /* gigabytes, range 5..3072 */
 	$args[] = "--db-instance-class";
 	$args[] = "db.t1.micro";
+	$args[] = "--vpc-security-group-ids";
+	$args[] = slimstk_getvar_region ("sgdb.groupid");
 	$args[] = "--engine";
 	$args[] = "MySQL";
 	$args[] = "--master-username";
