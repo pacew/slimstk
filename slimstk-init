@@ -12,9 +12,10 @@ else
     cd $HOME/slimstk-inst
 fi
 
-instdir=$HOME/slimstk-inst
-
 chmod a+rx $HOME
+
+instdir=$HOME/slimstk-inst
+sudo chown ec2-user $instdir
 
 sudo yum -y update aws-cli
 
