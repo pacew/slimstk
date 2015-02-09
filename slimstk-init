@@ -21,6 +21,7 @@ sudo yum -y update aws-cli
 
 sudo mkdir -p /var/slimstk
 sudo chown -R ec2-user /var/slimstk
+cp $instdir/stacks-and-vars.json /var/slimstk
 
 mkdir -p $HOME/.ssh
 chmod 700 $HOME/.ssh
