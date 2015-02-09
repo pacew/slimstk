@@ -1,4 +1,4 @@
-#! /bin/sh -xe
+#! /bin/sh -x
 
 # user is ec2-user
 # sudo works
