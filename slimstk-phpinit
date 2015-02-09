@@ -2,6 +2,8 @@
 <?php /* -*- mode:php -*- */
 
 require_once ("./slimstk.php");
-slimstk_inst_init ();
+slimstk_init ();
+slimstk_bail_out_on_error ();
 
 printf ("hello\n");
+var_dump ($slimstk);

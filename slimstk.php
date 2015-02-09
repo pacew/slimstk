@@ -71,13 +71,12 @@ function slimstk_cmd_init () {
 	slimstk_set_acct ($aws_acct_name);
 }
 
-function slimstk_inst_init () {
+function slimstk_init () {
 	global $slimstk;
 
 	slimstk_bail_out_on_error ();
 
-	$fname = sprintf ("%s/slimstk-inst/stacks-and-vars.json",
-			  $_SERVER['HOME']);
+	$fname = "/var/slimstk/stacks-and-vars.json";
 	$slimstk = json_decode (file_get_contents ($fname), true);
 }
 
