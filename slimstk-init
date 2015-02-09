@@ -26,7 +26,7 @@ chmod 700 $HOME/.ssh
 cp ${instdir}/authorized_keys $HOME/.ssh/authorized_keys
 
 sudo mkdir -p /www/blank
-sudo cp /dev/null /var/blank/index.html
+sudo cp /dev/null /www/blank/index.html
 
 mkdir -p $HOME/sites-enabled
 
