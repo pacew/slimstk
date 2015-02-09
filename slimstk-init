@@ -26,6 +26,7 @@ cp $instdir/stacks-and-vars.json /var/slimstk
 mkdir -p $HOME/.ssh
 chmod 700 $HOME/.ssh
 cp ${instdir}/authorized_keys $HOME/.ssh/authorized_keys
+cp ${instdir}/ssh_config $HOME/.ssh/config
 
 sudo mkdir -p /www/blank
 sudo cp /dev/null /www/blank/index.html

@@ -5,5 +5,22 @@ require_once ("./slimstk.php");
 slimstk_init ();
 slimstk_bail_out_on_error ();
 
-printf ("hello\n");
-var_dump ($slimstk);
+if (($stkname = @$slimstk['stkname']) == "")
+	$stkname = "pw1";
+
+$region = $slimstk['region'];
+
+$instdir = sprintf ("%s/slimstk-inst", $_SERVER['HOME']);
+
+foreach ($slimstk['apps'] as $app_name => $app_info) {
+	$keyname = sprintf ("deploy-%s", $app_name);
+	$kms_name = sprintf ("%s/%s.%s.kms", $instdir, $keyname, $region);
+	if (file_exists ($kms_name)) {
+		$dst = sprintf ("%s/.ssh/%s", $_SERVER['HOME'], $keyname);
+		$cmd = sprintf ("./kms-decrypt %s %s %s",
+				escapeshellarg ($region),
+				escapeshellarg ($kms_name),
+				escapeshellarg ($dst));
+		system ($cmd);
+	}
+}

@@ -13,6 +13,8 @@ if ($stkname == "") {
 	exit (1);
 }
 
+$slimstk['stkname'] = $stkname;
+
 if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
 	printf ("unknown stack %s for account %s\n",
 		$stkname, $slimstk['aws_acct_name']);
