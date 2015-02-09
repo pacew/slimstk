@@ -8,7 +8,11 @@ slimstk_bail_out_on_error ();
 if (($stkname = @$slimstk['stkname']) == "")
 	$stkname = "pw1";
 
-$region = $slimstk['region'];
+$stkinfo = $slimstk['stacks'][$stkname];
+
+printf ("setup for stack %s\n", $stkinfo);
+
+$region = $stkinfo['region'];
 
 $instdir = sprintf ("%s/slimstk-inst", $_SERVER['HOME']);
 
