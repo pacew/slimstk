@@ -18,7 +18,7 @@ slimstk_set_region ($region);
 $instdir = sprintf ("%s/slimstk-inst", $_SERVER['HOME']);
 
 function setup_deploy_keys () {
-	global $slimstk;
+	global $slimstk, $region;
 	global $instdir;
 	foreach ($slimstk['apps'] as $app_name => $app_info) {
 		$keyname = sprintf ("deploy-%s", $app_name);
@@ -32,6 +32,7 @@ function setup_deploy_keys () {
 					escapeshellarg ($kms_name),
 					escapeshellarg ($dst));
 			system ($cmd);
+			chmod ($dst, 0600);
 		}
 	}
 }
@@ -138,6 +139,6 @@ function setup_db_access () {
 	file_put_contents ("/var/slimstk/dbparams.php", $text);
 }
 
-// setup_deploy_keys ();
-// setup_dns ();
+setup_deploy_keys ();
+setup_dns ();
 setup_db_access ();
