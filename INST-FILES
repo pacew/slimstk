@@ -3,4 +3,4 @@ httpd-extra.conf
 inst-init
 inst-phpinit
 slimstk.php
-deploy-stack
+deploy-site

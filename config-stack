@@ -150,7 +150,8 @@ if (($f = fopen ("INST-FILES", "r")) == NULL) {
 	exit (1);
 }
 while (($fname = fgets ($f)) != NULL) {
-	$fname = trim ($fname);
+	if (($fname = trim ($fname)) == "")
+		continue;
 	$mode = "000644";
 	if (is_executable ($fname))
 		$mode = "000755";

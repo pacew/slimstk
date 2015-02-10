@@ -165,7 +165,7 @@ function slimstk_err ($errno, $errstr, $errfile, $errline, $errcontext) {
 	printf ("%s:%d: error (%d): %s\n",
 		$errfile, $errline, $errno, $errstr);
 	foreach (debug_backtrace () as $frame) {
-		printf ("%s:%d\n", $frame['file'], $frame['line']);
+		printf ("%s:%d\n", @$frame['file'], @$frame['line']);
 	}
 	exit (1);
 }
