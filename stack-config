@@ -193,11 +193,14 @@ foreach ($stkinfo['sites'] as $siteid => $sinfo) {
 addfile ("ssh_config", $ssh_config);
 
 $commands = array ();
-$commands['slimstk-init'] = array (
-	"command" => "su"
-	." --command /home/ec2-user/slimstk-inst/slimstk-init"
-	." --login"
-	." ec2-user"
+
+$commands['inst-init'] = array (
+	"command" => array ("su",
+			    "--command",
+			    "/home/ec2-user/slimstk-inst/inst-init",
+			    "--login",
+			    "ec2-user"
+		)
 	);
 
 $services = array (

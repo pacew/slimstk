@@ -40,7 +40,7 @@ then
  >> /etc/httpd/conf/httpd.conf"
 fi
 
-./slimstk-phpinit
+./inst-phpinit
 
 exit 0
 

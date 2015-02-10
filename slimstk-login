@@ -3,54 +3,81 @@
 
 $argv = $_SERVER['argv'];
 
-if (($confdir = trim (@$argv[1])) == "") {
-	printf ("usage: aws-login confdir\n");
+if (($arg = trim (@$argv[1])) == "") {
+	printf ("usage: slimstk-login confdir|acctname\n");
 	exit (1);
 }
 
-$fname = sprintf ("%s/stacks.json", $confdir);
-if (($stacks = @json_decode (file_get_contents ($fname), true)) == NULL) {
-	printf ("can't parse %s\n", $fname);
+if (strncmp ($arg, "/", 1) == 0) {
+	$confdir = rtrim ($arg, '/');
+	$update_confdir = 1;
+} else if (preg_match (':/:', $arg)) {
+	printf ("argument must be either the absolute path to the\n"
+		."stack config directory, or the name of an aws account\n");
+	exit (1);
+} else {
+	$fname = sprintf ("%s/.slimstk/confdir-%s", $_SERVER['HOME'], $arg);
+	$confdir = trim (@file_get_contents ($fname));
+	if ($confdir == "") {
+		printf ("%s not found\n", $fname);
+		printf ("try again giving the absolute path to"
+			." your stack's config directory\n");
+		exit (1);
+	}
+	$update_confdir = 0;
+}
+
+$stacks_name = sprintf ("%s/stacks.json", $confdir);
+if (($stacks = @json_decode (file_get_contents ($stacks_name), true)) == NULL) {
+	printf ("can't parse %s\n", $stacks_name);
 	exit (1);
 }
 
-$acct = $stacks['aws_acct_name'];
+$aws_acct_name = $stacks['aws_acct_name'];
+
+if (preg_match (':/:', $aws_acct_name)) {
+	printf ("invliad account name in %s\n", $stacks_name);
+	exit (1);
+}
+
 $user = $_SERVER['USER'];
 
 if (($gpg_key_id = @$stacks['users'][$user]['gpg_key_id']) == "") {
-	printf ("can't find gpg_key_id for %s\n", $user);
+	printf ("%s doesn't contain a gpg key for %s\n", $stacks_name, $user);
 	exit (1);
 }
 
-$gpg_name = sprintf ("%s/access-key-%s-%s.gpg", $confdir, $acct, $user);
-
-$stdin = fopen ("php://stdin", "r");
+$gpg_name = sprintf ("%s/access-key-%s-%s.gpg",
+		     $confdir, $aws_acct_name, $user);
 
 if (! file_exists ($gpg_name)) {
 	printf ("need access_key and secret_access_key for %s on %s\n",
-		$user, $acct);
+		$user, $aws_acct_name);
+
+	$stdin = fopen ("php://stdin", "r");
+
 	printf ("access_key_id: ");
 	$access_key_id = trim (fgets ($stdin));
 	printf ("secret_access_key: ");
 	$secret_access_key = trim (fgets ($stdin));
 	
-	$text = sprintf ("[%s-%s]\n", $acct, $user);
+	$text = sprintf ("[%s-%s]\n", $aws_acct_name, $user);
 	$text .= sprintf ("aws_access_key_id = %s\n", $access_key_id);
 	$text .= sprintf ("aws_secret_access_key = %s\n",
 			  $secret_access_key);
 		
-	$cleartext_file = "DANGER.clear";
-	file_put_contents ($cleartext_file, $text);
-	$cmd = sprintf ("gpg --encrypt --output %s --recipient %s %s",
+	$cmd = sprintf ("gpg --encrypt --output %s --recipient %s",
 			escapeshellarg ($gpg_name),
-			escapeshellarg ($gpg_key_id),
-			escapeshellarg ($cleartext_file));
-	system ($cmd, $rc);
-	@unlink ($cleartext_file);
-	if ($rc != 0) {
+			escapeshellarg ($gpg_key_id));
+	$f = popen ($cmd, "w");
+	fwrite ($f, $text);
+	pclose ($f);
+	if (@filesize ($gpg_name) == 0) {
 		printf ("error storing %s\n", $access_key_gpg);
 		exit (1);
 	}
+
+	printf ("%s created\n", $gpg_name);
 }
 
 $cmd = sprintf ("gpg --quiet --decrypt --output - %s",
@@ -65,12 +92,22 @@ if ($text == NULL) {
 
 $text2 = preg_replace ("/[[].*[]]/", "[default]", $text);
 
-$dir = sprintf ("%s/.aws", $_SERVER['HOME']);
-system (sprintf ("mkdir -p %s; chmod 700 %s",
-		 escapeshellarg ($dir),
-		 escapeshellarg ($dir)));
+$aws_dir = sprintf ("%s/.aws", $_SERVER['HOME']);
+if (! file_exists ($aws_dir))
+	mkdir ($aws_dir, 0700);
+chmod ($aws_dir, 0700);
 
-$dest = sprintf ("%s/credentials", $dir);
+$dest = sprintf ("%s/credentials", $aws_dir);
 file_put_contents ($dest, sprintf ("%s\n\n%s\n\n", $text, $text2));
+chmod ($dest, 0600);
 
+if ($update_confdir) {
+	$dir = sprintf ("%s/.slimstk", $_SERVER['HOME']);
+	if (! file_exists ($dir))
+		mkdir ($dir, 0775);
+	$fname = sprintf ("%s/.slimstk/confdir-%s",
+			  $_SERVER['HOME'], $aws_acct_name);
+	file_put_contents ($fname, $confdir."\n");
+}
 
+printf ("ready to use aws account %s\n", $aws_acct_name);
