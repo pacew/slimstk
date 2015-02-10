@@ -1,25 +1,23 @@
 <?php
 
 $slimstk = NULL;
-$running_on_aws = 0;
 
 function slimstk_init () {
-	global $slimstk, $running_on_aws;
+	global $slimstk;
 
-	if (file_exists ("/var/log/cfn-init-cmd.log")) {
-		$running_on_aws = 1;
-		
-		$fname = "/var/slimstk/stacks-and-vars.json";
-		$slimstk = json_decode (file_get_contents ($fname), true);
-
-		unset ($slimstk['conf_dir']);
-		unset ($slimstk['profile']);
-
-		global $stkname, $stkinfo;
-		$stkname = $slimstk['inst_stkname'];
-		$stkinfo = $slimstk['stacks'][$stkname];
-
+	if (isset ($_SERVER['confdir'])) {
+		/*
+		 * this will be set if we're serving a web page
+		 *
+		 * it will be in some user's directory for a development
+		 * site, or /var/slimstk for production
+		 */
+		$confdir = $_SERVER['confdir'];
+	} else if (file_exists ("/var/slimstk/stacks.json")) {
+		/* we're running a command on a production machine */
+		$confdir = "/var/slimstk";
 	} else {
+		/* we're running a command on a devel machine */
 		$fname = sprintf ("%s/.slimstk/current-confdir",
 				  $_SERVER['HOME']);
 		$confdir = trim (file_get_contents ($fname));
@@ -27,34 +25,38 @@ function slimstk_init () {
 			printf ("you need to run slimstk-login\n");
 			exit (1);
 		}
-		$stacks_file = sprintf ("%s/stacks.json", $confdir);
+	}
 
-		$slimstk = @json_decode (file_get_contents ($stacks_file),
-					 true);
+	$stacks_file = sprintf ("%s/stacks.json", $confdir);
+	$slimstk = @json_decode (file_get_contents ($stacks_file), true);
+	if ($slimstk == NULL) {
+		printf ("can't parse %s\n", $stacks_file);
+		exit (1);
+	}
 
-		if ($slimstk == NULL) {
-			printf ("can't parse %s\n", $stacks_file);
-			exit (1);
-		}
-
+	if (strcmp ($confdir, "/var/slimstk") != 0) {
 		$vars_file = sprintf ("%s/vars.json", $confdir);
-		if (file_exists ($vars_file)) {
-			$vars = @json_decode (file_get_contents ($vars_file),
-					      true);
-			if ($vars == NULL) {
-				printf ("can't parse %s\n", $vars_file);
-				exit (1);
-			}
-		} else {
-			$vars = array ();
-		}
 		$slimstk['vars_file'] = $vars_file;
-		$slimstk['vars'] = $vars;
+		$slimstk['vars'] = @json_decode (file_get_contents($vars_file),
+						 true);
+	}
 
-		$slimstk['conf_dir'] = $confdir;
+	$slimstk['confdir'] = $confdir;
+
+	if (file_exists ("/var/log/cfn-init-cmd.log")) {
+		$slimstk['running_on_aws'] = 1;
+		unset ($slimstk['profile']);
+	} else {
+		$slimstk['running_on_aws'] = 0;
 		$slimstk['profile'] = sprintf ("%s-%s",
 					       $slimstk['aws_acct_name'],
 					       $_SERVER['USER']);
+	}
+
+	if (isset ($slimstk['inst_stkname'])) {
+		global $stkname, $stkinfo;
+		$stkname = $slimstk['inst_stkname'];
+		$stkinfo = $slimstk['stacks'][$stkname];
 	}
 }
 

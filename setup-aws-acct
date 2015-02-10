@@ -176,7 +176,7 @@ function setup_db ($region, $database) {
 	printf ("creating...\n");
 
 	$pwname_gpg = sprintf ("%s/dbpass.%s.%s.gpg",
-			       $slimstk['conf_dir'],
+			       $slimstk['confdir'],
 			       $slimstk['aws_acct_name'],
 			       $database);
 
@@ -340,7 +340,7 @@ function setup_aws_login () {
 	$access_key_basename = sprintf ("access-key-%s-%s", $acct, $user);
 
 	$access_key_gpg = sprintf ("%s/%s.gpg",
-				   $slimstk['conf_dir'], $access_key_basename);
+				   $slimstk['confdir'], $access_key_basename);
 	
 	if (! file_exists ($access_key_gpg)) {
 		printf ("need access_key and secret_access_key for %s on %s\n",
@@ -376,7 +376,7 @@ function setup_aws_login () {
 	$prog = sprintf ("%s/slimstk-login", getcwd ());
 	$text .= sprintf ("%s %s\n",
 			  escapeshellarg ($prog),
-			  escapeshellarg ($slimstk['conf_dir']));
+			  escapeshellarg ($slimstk['confdir']));
 	file_put_contents ($lfile, $text);
 	chmod ($lfile, 0775);
 }
@@ -404,7 +404,28 @@ function setup_kms ($region) {
 	}
 }
 
+function setup_s3 () {
+	global $slimstk;
+
+	$bucket = sprintf ("s3://%s-deploy", $slimstk['aws_acct_name']);
+
+	$cmd = sprintf ("aws s3 ls %s > /dev/null 2>&1",
+			escapeshellarg ($bucket));
+	system ($cmd, $rc);
+	if ($rc != 0) {
+		printf ("making bucket %s\n", $bucket);
+		$cmd = sprintf ("aws s3 mb %s", escapeshellarg ($bucket));
+		system ($cmd, $rc);
+		if ($rc != 0) {
+			printf ("error making bucket %s\n", $bucket);
+			exit (1);
+		}
+	}
+}
+
 /* ================================================================ */
+
+setup_s3 ();
 
 setup_aws_login ();
 
@@ -447,5 +468,5 @@ foreach ($slimstk['stacks'] as $stkname => $dummy) {
 }
 
 
-printf ("be sure to commit any modified files in %s\n", $slimstk['conf_dir']);
+printf ("be sure to commit any modified files in %s\n", $slimstk['confdir']);
  

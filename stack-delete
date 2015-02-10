@@ -20,7 +20,7 @@ if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
 }
 slimstk_set_region ($stkinfo['region']);
 
-$template = sprintf ("%s/stack-%s.json", $slimstk['conf_dir'], $stkname);
+$template = sprintf ("%s/stack-%s.json", $slimstk['confdir'], $stkname);
 
 if (! file_exists ($template)) {
 	printf ("%s not found, run:\n", $template);

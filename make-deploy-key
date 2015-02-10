@@ -14,7 +14,7 @@ if ($app_name == "") {
 
 $comment = sprintf ("stacks github deploy key for %s %s",
 		    $app_name, strftime ("%Y-%m-%d %H:%M:%S"));
-$keyname_base = sprintf ("%s/deploy-%s", $slimstk['conf_dir'], $app_name);
+$keyname_base = sprintf ("%s/deploy-%s", $slimstk['confdir'], $app_name);
 $keyname_pub = sprintf ("%s.pub", $keyname_base);
 $keyname_gpg = sprintf ("%s.gpg", $keyname_base);
 

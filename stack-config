@@ -91,7 +91,7 @@ $packages = array ("yum" => $yum);
 
 $ssh_pub_keys = "";
 foreach ($stkinfo['admins'] as $username) {
-	$fname = sprintf ("%s/sshkey-%s.pub", $slimstk['conf_dir'], $username);
+	$fname = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $username);
 	$pub = @file_get_contents ($fname);
 	if ($pub == "") {
 		printf ("mssing %s\n", $fname);
@@ -138,7 +138,7 @@ $db_passwd_kms = sprintf ("dbpass.%s.%s.%s.kms",
 			  $slimstk['aws_acct_name'],
 			  $stkinfo['database'],
 			  $stkinfo['region']);
-$src = sprintf ("%s/%s", $slimstk['conf_dir'], $db_passwd_kms);
+$src = sprintf ("%s/%s", $slimstk['confdir'], $db_passwd_kms);
 if (! file_exists ($src)) {
 	printf ("%s does not exist ... run setup-aws-acct\n", $src);
 	exit (1);
@@ -170,7 +170,7 @@ foreach ($stkinfo['sites'] as $siteid => $sinfo) {
 		continue;
 	$deploy_done[$deploy_key_kms] = 1;
 
-	$src = sprintf ("%s/%s", $slimstk['conf_dir'], $deploy_key_kms);
+	$src = sprintf ("%s/%s", $slimstk['confdir'], $deploy_key_kms);
 	if (! file_exists ($src)) {
 		printf ("%s does not exist\n", $src);
 		printf ("you need to do:\n");
@@ -286,7 +286,7 @@ $cform["Resources"] = $resources;
 if (count ($outputs) > 0)
 	$cform["Outputs"] = $outputs;
 
-$outname = sprintf ("%s/stack-%s.json", $slimstk['conf_dir'], $stkname);
+$outname = sprintf ("%s/stack-%s.json", $slimstk['confdir'], $stkname);
 file_put_contents ($outname, json_encode ($cform));
 
 

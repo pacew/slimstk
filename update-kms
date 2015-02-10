@@ -38,7 +38,7 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 	$region = $stkinfo['region'];
 
 	$pname = sprintf ("%s/dbpass.%s.%s",
-			  $slimstk['conf_dir'],
+			  $slimstk['confdir'],
 			  $slimstk['aws_acct_name'],
 			  $database);
 	$gpg_name = sprintf ("%s.gpg", $pname);
@@ -65,7 +65,7 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 		$app_name = preg_replace ('/-.*/', '', $siteid);
 
 		$basename = sprintf ("%s/deploy-%s",
-				     $slimstk['conf_dir'], $app_name);
+				     $slimstk['confdir'], $app_name);
 		$gpg_name = sprintf ("%s.gpg", $basename);
 		$kms_name = sprintf ("%s.%s.kms", $basename, $region);
 
