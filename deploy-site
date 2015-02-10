@@ -1,0 +1,207 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+date_default_timezone_set ("UTC");
+
+require_once ("/var/slimstk/slimstk.php");
+slimstk_cmd_init ();
+
+$argv = $_SERVER['argv'];
+
+if (($deploy_what = @$argv[1]) == "") {
+	printf ("usage: deploy-site siteid|all\n");
+	exit (1);
+}
+
+function setup_elb ($siteid, $sinfo) {
+	global $slimstk, $stkname, $stkinfo;
+
+	$dns_name = rtrim ($sinfo['dns_name'], ".");
+	$www_dns_name = NULL;
+	if (count (explode ('.', $dns_name)) == 2) {
+		$www_dns_name = sprintf ("www.%s", $dns_name);
+	}
+
+	$elb_name = sprintf ("%selb", $stkname);
+
+	slimstk_set_region ($stkinfo['region']);
+
+	$args = array ("elb", "describe-load-balancers");
+	$val = slimstk_aws ($args);
+	$match = 0;
+	foreach ($val['LoadBalancerDescriptions'] as $elb) {
+		if (strcmp ($elb['LoadBalancerName'], $elb_name) == 0) {
+			$match = 1;
+			$elb_dns_name = rtrim ($elb['DNSName'], ".");
+			$elb_hosted_zone_id = $elb['CanonicalHostedZoneNameID'];
+			break;
+		}
+	}
+	if (! $match) {
+		printf ("can't find load balancer %s\n", $elb_name);
+		return (-1);
+	}
+
+	$hosted_zone_id = slimstk_get_hosted_zone_id ($dns_name);
+	if ($hosted_zone_id == "") {
+		printf ("setup_dns: server_domain %s not found in route53\n",
+			$server_domain);
+		return;
+	}
+
+	$args = array ("route53", "list-resource-record-sets");
+	$args[] = "--hosted-zone-id";
+	$args[] = $hosted_zone_id;
+	$val = slimstk_aws ($args);
+
+	$plain_ok = 0;
+	$www_ok = 0;
+	foreach ($val['ResourceRecordSets'] as $rec) {
+		if (($target = @$rec['AliasTarget']) == NULL)
+			continue;
+		if (strcmp ($target['HostedZoneId'], $elb_hosted_zone_id) != 0)
+			continue;
+
+		$target_name = rtrim ($target['DNSName'], ".");
+		if (strcmp ($target_name, $elb_dns_name) != 0)
+			continue;
+
+		$recname = rtrim ($rec['Name'], ".");
+		if (strcmp ($recname, $dns_name) == 0) {
+			$plain_ok = 1;
+		} else if ($www_dns_name && strcmp($recname,$www_dns_name)==0){
+			$www_ok = 1;
+		}
+	}
+
+	if ($plain_ok && $www_ok) {
+		printf ("route53 already up to date\n");
+		return (0);
+	}
+
+	$items = array ();
+	
+	if (! $plain_ok) {
+		$rset = array (
+			"Name" => $dns_name, 
+			"Type" => "A", 
+			"AliasTarget" => array (
+				"HostedZoneId" => $elb_hosted_zone_id,
+				"DNSName" => $elb_dns_name,
+				"EvaluateTargetHealth" => false
+				)
+			);
+	
+		$items[] = array ("Action" => "UPSERT",
+				  "ResourceRecordSet" => $rset);
+	}
+	
+	if (! $www_ok) {
+		$rset = array ("Name" => $www_dns_name, 
+			       "Type" => "A", 
+			       "AliasTarget" => array (
+				       "HostedZoneId" => $elb_hosted_zone_id,
+				       "DNSName" => $elb_dns_name,
+				       "EvaluateTargetHealth" => false
+				       )
+			);
+
+		$items[] = array ("Action" => "UPSERT", 
+				  "ResourceRecordSet" => $rset);
+	}
+	
+	$args = array ("route53", "change-resource-record-sets");
+	$args[] = "--hosted-zone-id";
+	$args[] = $hosted_zone_id;
+	$args[] = "--change-batch";
+	$args[] = json_encode (array ("Changes" => $items));
+	$val = slimstk_aws ($args);
+	printf ("setup_elb: %s\n", json_encode ($val));
+}
+
+
+$err = 0;
+
+foreach ($stkinfo['sites'] as $siteid => $sinfo) {
+	if (strcmp ($deploy_what, "all") != 0
+	    && strcmp ($deploy_what, $siteid) != 0) {
+		continue;
+	}
+
+	printf ("deploy %s\n", $siteid);
+
+	$app_name = preg_replace ('/-.*$/', '', $siteid);
+	$appinfo = $slimstk['apps'][$app_name];
+	$deploy_bucket = $appinfo['deploy_bucket'];
+
+	$s3name = sprintf ("s3://%s/%s/latest", $deploy_bucket, $siteid);
+
+	$tname = tempnam ("/tmp", "deploy-site.");
+	$cmd = sprintf ("aws s3 cp %s %s", escapeshellarg ($s3name), $tname);
+	system ($cmd, $rc);
+	if ($rc != 0) {
+		printf ("error getting %s ... skip\n", $s3name);
+		$err = 1;
+		continue;
+	}
+
+	$arr = explode (" ", trim (file_get_contents ($tname)));
+	$desired_md5 = $arr[0];
+	$tgz_name = $arr[1];
+
+	$s3name = sprintf ("s3://%s/%s/%s", $deploy_bucket, $siteid, $tgz_name);
+
+	$cmd = sprintf ("aws s3 cp %s %s", $s3name, $tname);
+	system ($cmd, $rc);
+	if ($rc != 0) {
+		printf ("error getting %s ... skip\n", $s3name);
+		$err = 1;
+		continue;
+	}
+	
+	$got_md5 = system (sprintf ("md5sum %s", escapeshellarg ($tname)));
+	$got_md5 = preg_replace ("/[ \t].*/", "", $got_md5);
+
+	if (strcmp ($desired_md5, $got_md5) != 0) {
+		printf ("%s: tar file md5 doesn't match ... skipping\n",
+			$siteid);
+		$err = 1;
+		continue;
+	}
+
+	$destdir = sprintf ("%s/%s.%s", $_SERVER['HOME'], $siteid,
+			    strftime ("%Y%m%dT%H%M%S"));
+	mkdir ($destdir);
+	$cmd = sprintf ("tar -C %s -xf %s",
+			escapeshellarg ($destdir),
+			escapeshellarg ($tname));
+	system ($cmd, $rc);
+	if ($rc != 0) {
+		printf ("error extracting %s\n", $tgz_name);
+		$err = 1;
+		continue;
+	}
+
+	$cmd = sprintf ("cd %s && ./install-site",
+			escapeshellarg ($destdir));
+	system ($cmd, $rc);
+	if ($rc != 0) {
+		printf ("install-site %s failed\n", $siteid);
+		$err = 1;
+		continue;
+	}
+
+	setup_elb ($siteid, $sinfo);
+}
+
+
+if ($err) {
+	printf ("error: some site didn't deploy\n");
+	exit (1);
+}
+
+exit (0);
+
+
+
+
