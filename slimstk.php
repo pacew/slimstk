@@ -102,6 +102,22 @@ function slimstk_putvar_region ($key, $val) {
 	return (slimstk_putvar ($full_key, $val));
 }
 
+function slimstk_get_hosted_zone_id ($name) {
+	$name = rtrim ($name, ".");
+
+	$args = array ("route53", "list-hosted-zones");
+	$val = slimstk_aws ($args);
+	$hosted_zone_id = "";
+	foreach ($val['HostedZones'] as $zinfo) {
+		$zname = rtrim ($zinfo['Name'], '.');
+		if (strcmp ($zname, $name) == 0) {
+			$hosted_zone_id = $zinfo['Id'];
+			break;
+		}
+	}
+	return ($hosted_zone_id);
+}
+
 function slimstk_aws ($args, $ignore_errors = 0) {
 	global $slimstk;
 

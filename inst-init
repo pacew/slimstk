@@ -21,7 +21,7 @@ sudo yum -y update aws-cli
 
 sudo mkdir -p /var/slimstk
 sudo chown -R ec2-user /var/slimstk
-cp $instdir/stacks.json /var/slimstk
+cp $instdir/slimstk.php $instdir/stacks.json /var/slimstk
 
 mkdir -p $HOME/.ssh
 chmod 700 $HOME/.ssh
@@ -42,6 +42,6 @@ fi
 
 ./inst-phpinit
 
+./deploy-site all
+
 exit 0
-
-

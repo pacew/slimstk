@@ -38,19 +38,9 @@ function setup_dns () {
 	if (($server_domain = @$stkinfo['server_domain']) == "")
 		return;
 
-	$args = array ("route53", "list-hosted-zones");
-	$val = slimstk_aws ($args);
-	$hosted_zone_id = "";
-	foreach ($val['HostedZones'] as $zinfo) {
-		$zname = rtrim ($zinfo['Name'], '.');
-		if (strcmp ($zname, $server_domain) == 0) {
-			$hosted_zone_id = $zinfo['Id'];
-			break;
-		}
-	}
-
+	$hosted_zone_id = slimstk_get_hosted_zone_id ($server_domain);
 	if ($hosted_zone_id == "") {
-		printf ("setup_dns: %s not found in route53\n",
+		printf ("setup_dns: server_domain %s not found in route53\n",
 			$server_domain);
 		return;
 	}
