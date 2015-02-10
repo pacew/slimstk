@@ -260,3 +260,12 @@ function slimstk_make_kms_for_region ($gpg_name, $region) {
 	file_put_contents ($kms_name, $encrypted);
 	return (0);
 }
+
+function prettyprint_json ($json) {
+	$tname = tempnam ("/tmp", "jq.");
+	file_put_contents ($tname, json_encode ($json));
+	$cmd = sprintf ("jq . < %s", $tname);
+	$ret = shell_exec ($cmd);
+	unlink ($tname);
+	return ($ret);
+}

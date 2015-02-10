@@ -132,7 +132,7 @@ function addfile_binary ($dst, $content) {
 }
 
 addfile ("authorized_keys", $ssh_pub_keys);
-addfile ("stacks-and-vars.json", json_encode ($slimstk));
+addfile ("stacks.json", json_encode ($slimstk));
 
 $db_passwd_kms = sprintf ("dbpass.%s.%s.%s.kms",
 			  $slimstk['aws_acct_name'],
@@ -288,7 +288,6 @@ if (count ($outputs) > 0)
 
 $outname = sprintf ("%s/stack-%s.json", $slimstk['confdir'], $stkname);
 file_put_contents ($outname, json_encode ($cform));
-
 
 printf ("output in %s\n", $outname);
 printf ("be sure to commit it over there\n");
