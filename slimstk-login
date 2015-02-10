@@ -101,13 +101,16 @@ $dest = sprintf ("%s/credentials", $aws_dir);
 file_put_contents ($dest, sprintf ("%s\n\n%s\n\n", $text, $text2));
 chmod ($dest, 0600);
 
+$sdir = sprintf ("%s/.slimstk", $_SERVER['HOME']);
+if (! file_exists ($sdir))
+	mkdir ($sdir, 0775);
+
+$fname = sprintf ("%s/current-confdir", $sdir);
+file_put_contents ($fname, $confdir . "\n");
+
 if ($update_confdir) {
-	$dir = sprintf ("%s/.slimstk", $_SERVER['HOME']);
-	if (! file_exists ($dir))
-		mkdir ($dir, 0775);
-	$fname = sprintf ("%s/.slimstk/confdir-%s",
-			  $_SERVER['HOME'], $aws_acct_name);
-	file_put_contents ($fname, $confdir."\n");
+	$fname = sprintf ("%s/confdir-%s", $sdir, $aws_acct_name);
+	file_put_contents ($fname, $confdir . "\n");
 }
 
 printf ("ready to use aws account %s\n", $aws_acct_name);

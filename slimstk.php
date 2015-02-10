@@ -1,84 +1,66 @@
 <?php
 
 $slimstk = NULL;
+$running_on_aws = 0;
 
-function slimstk_get_logged_in_acct () {
-	$fname = sprintf ("%s/.aws/credentials", $_SERVER['HOME']);
-	$text = file_get_contents ($fname);
-	if ( ! preg_match ('/[[](.*)-(.*)[]]/', $text, $parts))
-		return (NULL);
+function slimstk_init () {
+	global $slimstk, $running_on_aws;
 
-	$aws_acct_name = $parts[1];
-	$user = $parts[2];
+	if (file_exists ("/var/log/cfn-init-cmd.log")) {
+		$running_on_aws = 1;
+		
+		$fname = "/var/slimstk/stacks-and-vars.json";
+		$slimstk = json_decode (file_get_contents ($fname), true);
 
-	if (strcmp ($_SERVER['USER'], $user) != 0)
-		return (NULL);
+		unset ($slimstk['conf_dir']);
+		unset ($slimstk['profile']);
 
-	return ($aws_acct_name);
-}
+		global $stkname, $stkinfo;
+		$stkname = $slimstk['inst_stkname'];
+		$stkinfo = $slimstk['stacks'][$stkname];
 
-function slimstk_set_acct ($aws_acct_name) {
-	global $slimstk;
-
-	$confdir=trim(file_get_contents(sprintf("confdir-%s",$aws_acct_name)));
-	if (! file_exists ($confdir)) {
-		printf ("%s does not exist\n", $confdir);
-		exit (1);
-	}
-
-	$stacks_file = sprintf ("%s/stacks.json", $confdir);
-	if (! file_exists ($confdir)) {
-		printf ("%s does not exist\n", $confdir);
-		exit (1);
-	}
-	$slimstk = @json_decode (file_get_contents ($stacks_file), true);
-
-	if ($slimstk == NULL) {
-		printf ("can't parse %s\n", $stacks_file);
-		exit (1);
-	}
-
-	if (strcmp (@$slimstk['aws_acct_name'], $aws_acct_name) != 0) {
-		printf ("unexpected aws_acct_name in %s\n", $stacks_file);
-		exit (1);
-	}
-	
-	$vars_file = sprintf ("%s/vars.json", $confdir);
-	if (file_exists ($vars_file)) {
-		$vars = @json_decode (file_get_contents ($vars_file), true);
-		if ($vars == NULL) {
-			printf ("can't parse %s\n", $vars_file);
+	} else {
+		$fname = sprintf ("%s/.slimstk/current-confdir",
+				  $_SERVER['HOME']);
+		$confdir = trim (file_get_contents ($fname));
+		if ($confdir == "") {
+			printf ("you need to run slimstk-login\n");
 			exit (1);
 		}
-	} else {
-		$vars = array ();
-	}
-	$slimstk['vars_file'] = $vars_file;
-	$slimstk['vars'] = $vars;
+		$stacks_file = sprintf ("%s/stacks.json", $confdir);
 
-	$slimstk['conf_dir'] = $confdir;
-	$slimstk['profile'] = sprintf ("%s-%s",
-				       $aws_acct_name, $_SERVER['USER']);
+		$slimstk = @json_decode (file_get_contents ($stacks_file),
+					 true);
+
+		if ($slimstk == NULL) {
+			printf ("can't parse %s\n", $stacks_file);
+			exit (1);
+		}
+
+		$vars_file = sprintf ("%s/vars.json", $confdir);
+		if (file_exists ($vars_file)) {
+			$vars = @json_decode (file_get_contents ($vars_file),
+					      true);
+			if ($vars == NULL) {
+				printf ("can't parse %s\n", $vars_file);
+				exit (1);
+			}
+		} else {
+			$vars = array ();
+		}
+		$slimstk['vars_file'] = $vars_file;
+		$slimstk['vars'] = $vars;
+
+		$slimstk['conf_dir'] = $confdir;
+		$slimstk['profile'] = sprintf ("%s-%s",
+					       $slimstk['aws_acct_name'],
+					       $_SERVER['USER']);
+	}
 }
 
 function slimstk_cmd_init () {
+	slimstk_init ();
 	slimstk_bail_out_on_error ();
-
-	if (($aws_acct_name = slimstk_get_logged_in_acct ()) == NULL) {
-		printf ("do aws-login first\n");
-		exit (1);
-	}
-	slimstk_set_acct ($aws_acct_name);
-}
-
-function slimstk_init () {
-	global $slimstk;
-
-	$fname = "/var/slimstk/stacks-and-vars.json";
-	$slimstk = json_decode (file_get_contents ($fname), true);
-
-	unset ($slimstk['conf_dir']);
-	unset ($slimstk['profile']);
 }
 
 function slimstk_set_region ($region) {
@@ -241,4 +223,38 @@ function slimstk_gets () {
 	$resp = fgets ($f);
 	fclose ($f);
 	return ($resp);
+}
+
+/*
+ * this probably works for binary plaintext, but php shell_exec() doesn't
+ * make an explicit promise of being binary safe.  it is certainly safe
+ * if the plaintext is utf8 text.
+ *
+ * the kms output file is binary, and file_put_contents is documented
+ * as binary safe
+ */
+function slimstk_make_kms_for_region ($gpg_name, $region) {
+	global $slimstk;
+
+	$cmd = sprintf ("gpg --decrypt --output - %s", $gpg_name);
+	if (($plaintext = shell_exec ($cmd)) == NULL) {
+		printf ("error running: %s\n", $cmd);
+		return (-1);
+	}
+
+	$suffix = sprintf ("%s.kms", $region);
+	$kms_name = preg_replace ('/gpg$/', $suffix, $gpg_name);
+
+	$kms_key_id = sprintf ("alias/%s", $slimstk['aws_acct_name']);
+
+	slimstk_set_region ($region);
+	$args = array ("kms", "encrypt");
+	$args[] = "--key-id";
+	$args[] = $kms_key_id;
+	$args[] = "--plaintext";
+	$args[] = $plaintext;
+	$val = slimstk_aws ($args);
+	$encrypted = base64_decode ($val['CiphertextBlob']);
+	file_put_contents ($kms_name, $encrypted);
+	return (0);
 }

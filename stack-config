@@ -13,7 +13,7 @@ if ($stkname == "") {
 	exit (1);
 }
 
-$slimstk['stkname'] = $stkname;
+$slimstk['inst_stkname'] = $stkname;
 
 if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
 	printf ("unknown stack %s for account %s\n",

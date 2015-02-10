@@ -5,12 +5,7 @@ require_once ("./slimstk.php");
 slimstk_init ();
 slimstk_bail_out_on_error ();
 
-if (($stkname = @$slimstk['stkname']) == "")
-	$stkname = "pw1";
-
 printf ("setup for stack %s\n", $stkname);
-
-$stkinfo = $slimstk['stacks'][$stkname];
 
 $region = $stkinfo['region'];
 slimstk_set_region ($region);
