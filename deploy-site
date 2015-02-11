@@ -1,8 +1,6 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-date_default_timezone_set ("UTC");
-
 require_once ("/var/slimstk/slimstk.php");
 slimstk_cmd_init ();
 
