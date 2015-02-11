@@ -520,6 +520,14 @@ function dbpatch ($db, $tables) {
 	}
 }
 
+function slimstk_setup_schema () {
+	$sessions_schema[] = array ("name" => "sessions",
+				    "cols" => array ("session_id" => "text",
+						     "updated" => "datetime",
+						     "session" => "longtext"));
+	dbpatch (NULL, $sessions_schema);
+}
+
 function slimstk_session_open () {}
 function slimstk_session_close () {}
 

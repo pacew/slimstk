@@ -1,0 +1,18 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/var/slimstk/slimstk.php");
+slimstk_cmd_init ();
+
+printf ("confdir %s\n", $slimstk['confdir']);
+printf ("aws_acct_name %s\n", $slimstk['aws_acct_name']);
+printf ("profile %s\n", $slimstk['profile']);
+printf ("running_on_aws %s\n", $slimstk['running_on_aws']);
+
+if (isset ($stkname)) {
+	printf ("stkname %s\n", $stkname);
+	printf ("database %s\n", $stkinfo['database']);
+	printf ("region %s\n", $stkinfo['region']);
+}
+
+
