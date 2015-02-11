@@ -3,6 +3,16 @@
 # user is ec2-user
 # sudo works
 
+instdir=$HOME/slimstk-inst
+
+mkdir -p $HOME/.ssh
+chmod 700 $HOME/.ssh
+cp ${instdir}/authorized_keys $HOME/.ssh/authorized_keys
+cp ${instdir}/ssh_config $HOME/.ssh/config
+
+chmod a+rx $HOME
+sudo chown ec2-user $instdir
+
 if [ -d $HOME/slimstk ]
 then
     # development mode
@@ -12,21 +22,9 @@ else
     cd $HOME/slimstk-inst
 fi
 
-chmod a+rx $HOME
-
-instdir=$HOME/slimstk-inst
-sudo chown ec2-user $instdir
-
-sudo yum -y update aws-cli
-
 sudo mkdir -p /var/slimstk
 sudo chown -R ec2-user /var/slimstk
 cp $instdir/slimstk.php $instdir/stacks.json /var/slimstk
-
-mkdir -p $HOME/.ssh
-chmod 700 $HOME/.ssh
-cp ${instdir}/authorized_keys $HOME/.ssh/authorized_keys
-cp ${instdir}/ssh_config $HOME/.ssh/config
 
 sudo mkdir -p /www/blank
 sudo cp /dev/null /www/blank/index.html
