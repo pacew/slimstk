@@ -48,11 +48,17 @@ function slimstk_init () {
 
 	$slimstk['confdir'] = $confdir;
 
-	if (file_exists ("/var/log/cfn-init-cmd.log")) {
+	unset ($slimstk['profile']);
+
+	$slimstk['serving_web_page'] = 0; /* 0 means command line mode */
+	if (isset ($_SERVER['GATEWAY_INTERFACE']))
+		$slimstk['serving_web_page'] = 1;
+
+	$slimstk['running_on_aws'] = 0;
+	if (file_exists ("/var/log/cfn-init-cmd.log"))
 		$slimstk['running_on_aws'] = 1;
-		unset ($slimstk['profile']);
-	} else {
-		$slimstk['running_on_aws'] = 0;
+
+	if (! $slimstk['serving_web_page'] && ! $slimstk['running_on_aws']) {
 		$slimstk['profile'] = sprintf ("%s-%s",
 					       $slimstk['aws_acct_name'],
 					       $_SERVER['USER']);
