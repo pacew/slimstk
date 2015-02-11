@@ -128,9 +128,7 @@ foreach ($stkinfo['sites'] as $siteid => $sinfo) {
 
 	printf ("deploy %s\n", $siteid);
 
-	$app_name = preg_replace ('/-.*$/', '', $siteid);
-	$appinfo = $slimstk['apps'][$app_name];
-	$deploy_bucket = $appinfo['deploy_bucket'];
+	$deploy_bucket = $slimstk['deploy_bucket'];
 
 	$s3name = sprintf ("s3://%s/%s/latest", $deploy_bucket, $siteid);
 

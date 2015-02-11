@@ -407,7 +407,7 @@ function setup_kms ($region) {
 function setup_s3 () {
 	global $slimstk;
 
-	$bucket = sprintf ("s3://%s-deploy", $slimstk['aws_acct_name']);
+	$bucket = sprintf ("s3://%s", $slimstk['deploy_bucket']);
 
 	$cmd = sprintf ("aws s3 ls %s > /dev/null 2>&1",
 			escapeshellarg ($bucket));
@@ -419,6 +419,24 @@ function setup_s3 () {
 		if ($rc != 0) {
 			printf ("error making bucket %s\n", $bucket);
 			exit (1);
+		}
+	}
+
+	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+		$bucket = sprintf ("s3://%s", $stkinfo['files_bucket']);
+
+		$cmd = sprintf ("aws s3 ls %s > /dev/null 2>&1",
+				escapeshellarg ($bucket));
+		system ($cmd, $rc);
+		if ($rc != 0) {
+			printf ("making bucket %s\n", $bucket);
+			$cmd = sprintf ("aws s3 mb %s",
+					escapeshellarg ($bucket));
+			system ($cmd, $rc);
+			if ($rc != 0) {
+				printf ("error making bucket %s\n", $bucket);
+				exit (1);
+			}
 		}
 	}
 }
