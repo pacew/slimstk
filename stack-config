@@ -254,7 +254,6 @@ $props['IamInstanceProfile'] = array ("Ref" => $instance_profile_name);
 $props["ImageId"] = $image_id;
 $props["InstanceType"] = "t2.micro";
 $props["SecurityGroups"] = array ($sg_name);
-$props["KeyName"] = "test-key-pair";
 $props["UserData"] = array ("Fn::Base64" => $user_data);
 
 $resources["launch"] = array (
