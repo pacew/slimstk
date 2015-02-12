@@ -57,6 +57,10 @@ $user_data = "#! /bin/bash -xe\n";
 $user_data  .= "yum update -y aws-cfn-bootstrap\n";
 $user_data .= "(echo '/^Defaults.*requiretty/s/^/#/'; echo 'w')"
 	." | ed /etc/sudoers\n";
+$user_data .= sprintf ("(echo '/^#Port 22/s/^/Port %d/'; echo 'w')"
+		       ." | ed /etc/ssh/sshd_config\n",
+		       $alternative_ssh_port);
+$user_data .= "service sshd restart\n";
 $user_data .= sprintf ("/opt/aws/bin/cfn-init"
 		       ." -v"
 		       ." --stack %s"

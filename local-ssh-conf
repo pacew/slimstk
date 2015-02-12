@@ -5,6 +5,8 @@ require_once ("./slimstk.php");
 slimstk_cmd_init ();
 
 function do_stack ($stkname, $stkinfo) {
+	global $alternative_ssh_port;
+
 	if (($server_domain = @$stkinfo['server_domain']) == NULL)
 		return;
 
@@ -16,6 +18,7 @@ function do_stack ($stkname, $stkinfo) {
 		$opts = array ();
 		$opts[] = sprintf ("Hostname %s", $long_hostname);
 		$opts[] = "User ec2-user";
+		$opts[] = sprintf ("Port %d", $alternative_ssh_port);
 		$opts[] = "StrictHostKeyChecking no";
 		$opts[] = "UserKnownHostsFile=/dev/null";
 

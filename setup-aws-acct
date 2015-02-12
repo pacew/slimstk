@@ -459,7 +459,7 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 
 	setup_security_group ($region,
 			      "sgext",
-			      array (22, 80, 443),
+			      array ($alternative_ssh_port, 80, 443),
 			      NULL);
 	setup_security_group ($region,
 			      "sgdb",
