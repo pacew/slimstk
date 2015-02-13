@@ -4,34 +4,6 @@
 require_once ("./slimstk.php");
 slimstk_cmd_init ();
 
-function do_kms_encrypt ($region, $gpg_name, $kms_name) {
-	global $slimstk;
-
-	$clear_name = "DANGER.clear";
-	@unlink ($clear_name);
-	$cmd = sprintf ("gpg --decrypt --output %s %s",
-			$clear_name, $gpg_name);
-	system ($cmd, $rc);
-	if ($rc != 0) {
-		printf ("error running: %s\n", $cmd);
-		exit (1);
-	}
-
-	$kms_key_id = sprintf ("alias/%s", $slimstk['aws_acct_name']);
-
-	slimstk_set_region ($region);
-	$args = array ("kms", "encrypt");
-	$args[] = "--key-id";
-	$args[] = $kms_key_id;
-	$args[] = "--plaintext";
-	$args[] = sprintf ("file://%s", $clear_name);
-	$val = slimstk_aws ($args);
-	unlink ($clear_name);
-	$encrypted = base64_decode ($val['CiphertextBlob']);
-	printf ("writing %s\n", $kms_name);
-	file_put_contents ($kms_name, $encrypted);
-}
-
 $db_done = array ();
 foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 	$database = $stkinfo['database'];
@@ -48,13 +20,7 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 		continue;
 	$db_done[$kms_name] = 1;
 
-	if (! file_exists ($gpg_name)) {
-		printf ("%s does not exist, you need:\n");
-		printf ("./setup-aws-acct\n");
-		exit (1);
-	}
-
-	do_kms_encrypt ($region, $gpg_name, $kms_name);
+	slimstk_make_kms_for_region ($gpg_name, $region);
 }
 
 $key_done = array ();
@@ -73,7 +39,7 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 			continue;
 		$key_done[$kms_name] = 1;
 
-		do_kms_encrypt ($region, $gpg_name, $kms_name);
+		slimstk_make_kms_for_region ($gpg_name, $region);
 	}
 }
 	

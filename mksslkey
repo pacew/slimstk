@@ -1,0 +1,112 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/var/slimstk/slimstk.php");
+slimstk_init ();
+
+$keyname = @$_SERVER['argv'][1];
+
+function usage () {
+	printf ("usage: mksslkey domainname\n");
+	exit (1);
+}
+
+if ($keyname == "") {
+	usage ();
+}
+
+$keyname = preg_replace ("/^www./", "", $keyname);
+$alt_name = "";
+
+$parts = explode ('.', $keyname);
+
+if ($parts[0] == "wildcard") {
+	$last_part = preg_replace ('/^wildcard./', "", $keyname);
+	$CN = sprintf ("*.%s", $last_part);
+	$alt_name = $last_part;
+} else if (count ($parts) > 2) {
+	$CN = $keyname;
+	$alt_name = "";
+} else if (count ($parts) == 2) {
+	$CN = sprintf ("www.%s", $keyname);
+	$alt_name = $keyname;
+} else {
+	usage ();
+}
+
+$keyfile = sprintf ("%s.key", $keyname);
+$csrfile = sprintf ("%s.csr", $keyname);
+
+@unlink ($keyfile);
+@unlink ($csrfile);
+
+$keygen = "";
+$keygen .= "[ req ]\n"
+	."default_bits = 2048\n"
+	."distinguished_name = req_distinguished_name\n"
+	."prompt = no\n"
+	;
+
+if ($alt_name) {
+	$keygen .= "req_extensions = v3_req\n";
+}
+
+
+$keygen .= "\n";
+
+$keygen .= sprintf ("[ req_distinguished_name ]\n"
+		    ."O = %s\n"
+		    ."CN = %s\n",
+		    $CN, $CN);
+
+if ($alt_name) {
+	$keygen .= sprintf ("\n"
+			    ."[v3_req]\n"
+			    ."subjectAltName = DNS:%s\n",
+			    $alt_name);
+}
+
+@unlink ("TMP.keygen");
+file_put_contents ("TMP.keygen", $keygen);
+$cmd = sprintf ("openssl req"
+		." -batch"
+		." -config TMP.keygen"
+		." -new"
+		." -keyout %s"
+		." -out %s"
+		." -nodes"
+		." -sha256",
+		$keyfile, $csrfile);
+system ($cmd, $rc);
+if ($rc != 0) {
+	printf ("error generating key and csr\n");
+	exit (1);
+}
+
+$app_name = preg_replace ('/-.*/', '', basename (getcwd ()));
+
+$key_ids = slimstk_get_gpg_ids_for_app ($app_name);
+
+$cmd = "gpg --encrypt";
+foreach ($key_ids as $key_id) {
+	$cmd .= sprintf (" --recipient %s", escapeshellarg ($key_id));
+}
+$cmd .= sprintf (" %s", escapeshellarg ($keyfile));
+
+system ($cmd, $rc);
+if ($rc != 0) {
+	printf ("error encrypting key\n");
+	printf ("you may need to run:\n");
+	$cmd = "gpg --recv-keys";
+	foreach ($key_ids as $key_id) {
+		$cmd .= sprintf (" %s", escapeshellarg ($key_id));
+	}
+	printf ("%s\n", $cmd);
+	exit (1);
+}
+
+unlink ($keyfile);
+unlink ("TMP.keygen");
+
+$cmd = sprintf ("ls -l %s.*", escapeshellarg ($keyname));
+system ($cmd);

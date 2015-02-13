@@ -1,0 +1,49 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/var/slimstk/slimstk.php");
+slimstk_cmd_init ();
+
+$argv = @$_SERVER['argv'];
+
+if (($for_conf_key = @$argv[1]) == "") {
+	printf ("usage: ./deploy conf_key\n");
+	printf("   for example: ./deploy production\n");
+	exit (1);
+}
+
+if (preg_match ('/-/', $for_conf_key)) {
+	printf ("just give the conf_key, not the full siteid\n");
+	exit (1);
+}
+
+$app_name = preg_replace ('/-.*/', '', basename (getcwd ()));
+$for_siteid = sprintf ("%s-%s", $app_name, $for_conf_key);
+
+$match = 0;
+foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	foreach ($stkinfo['sites'] as $siteid => $sinfo) {
+		if ($siteid == $for_siteid) {
+			$match = 1;
+			break;
+		}
+	}
+}
+
+if ($match == 0) {
+	printf ("unknown site: %s\n", $for_siteid);
+	exit (1);
+}
+
+if (($dns_name = @$sinfo['dns_name']) == "") {
+	printf ("no dns_name for %s\n", $for_siteid);
+	exit (1);
+}
+
+$region = $stkinfo['region'];
+
+$gpg_name = sprintf ("%s.key.gpg", $dns_name);
+
+slimstk_make_kms_for_region ($gpg_name, $region);
+
+	

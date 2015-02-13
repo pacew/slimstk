@@ -1,0 +1,24 @@
+#! /bin/sh
+
+# remove self-signed certificates from a chain file
+
+if [ $# != 1 ]
+then
+    echo "usage: ssl-chain-info chainfile"
+    exit 1
+fi
+
+chainfile=$1
+
+rm -f TMP.chain.*
+csplit -s -f TMP.chain. $chainfile '%BEGIN%' '/BEGIN CERTIFICATE/' '{*}'
+for cert in TMP.chain.*
+do
+    issuer=`openssl x509 -in $cert -noout -issuer | sed 's/^[^ ]* //'` 
+    subject=`openssl x509 -in $cert -noout -subject | sed 's/^[^ ]* //'`
+    if [ "x$issuer" != "x$subject" ]
+    then
+	cat $cert
+    fi
+    rm -f $cert
+done
