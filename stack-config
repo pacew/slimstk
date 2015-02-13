@@ -225,15 +225,19 @@ $cfn_init["services"] = $services;
 
 $resources = array ();
 
+$props = array (
+	"AvailabilityZones" => array ("Fn::GetAZs" => "" ),
+	"LaunchConfigurationName" => array ("Ref" => "launch"),
+	"MinSize" => "1",
+	"MaxSize" => "2",
+	"LoadBalancerNames" => array ( $elb_name )
+	);
+if ($stkinfo['vpc']) {
+	$props['VPCZoneIdentifier'] = json_decode (slimstk_getvar_region ("subnet_ids"));
+}
+
 $asgroup = array ("Type" => "AWS::AutoScaling::AutoScalingGroup",
-		  "Properties" => array (
-			  "AvailabilityZones" => array ("Fn::GetAZs" => "" ),
-			  "LaunchConfigurationName" => array (
-				  "Ref" => "launch" ),
-			  "MinSize" => "1",
-			  "MaxSize" => "2",
-			  "LoadBalancerNames" => array ( $elb_name )
-			  ),
+		  "Properties" => $props,
 		  "UpdatePolicy" => array (
 			  "AutoScalingRollingUpdate" => array (
 				  "MinInstancesInService" => "1",
@@ -258,7 +262,11 @@ $props['IamInstanceProfile'] = array ("Ref" => $instance_profile_name);
 $props["ImageId"] = $image_id;
 $props["InstanceType"] = "t2.micro";
 $props["SecurityGroups"] = array ($sg_name);
+$props["KeyName"] = "test-key-pair";
 $props["UserData"] = array ("Fn::Base64" => $user_data);
+if ($stkinfo['vpc']) {
+	$props['AssociatePublicIpAddress'] = true;
+}
 
 $resources["launch"] = array (
 	"Type" => "AWS::AutoScaling::LaunchConfiguration",

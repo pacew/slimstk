@@ -72,14 +72,15 @@ function find_security_group ($group_name) {
 	return (NULL);
 }
 
-function setup_security_group ($region, $group_name,
+function setup_security_group ($stkinfo, $group_name,
 			       $incoming_ports, $source_group) {
-	slimstk_set_region ($region);
+	slimstk_set_region ($stkinfo['region']);
 
 	if ($source_group) {
 		$key = sprintf ("%s.groupid", $source_group);
 		$source_group_id = slimstk_getvar_region ($key);
 	}
+
 
 	$group_info = find_security_group ($group_name);
 	if ($group_info == NULL) {
@@ -89,6 +90,11 @@ function setup_security_group ($region, $group_name,
 		$args[] = $group_name;
 		$args[] = "--description";
 		$args[] = $group_name;
+		if ($stkinfo['vpc']) {
+			$args[] = "--vpc-id";
+			$args[] = slimstk_getvar_region ("vpc_id");
+		}
+
 		slimstk_aws ($args);
 		$group_info = find_security_group ($group_name);
 		if ($group_info == NULL) {
@@ -142,9 +148,10 @@ function setup_security_group ($region, $group_name,
 
 }
 
-function setup_db ($region, $database) {
+function setup_db ($stkinfo, $database) {
 	global $slimstk;
 
+	$region = $stkinfo['region'];
 	slimstk_set_region ($region);
 
 	$args = array ("rds", "describe-db-instances");
@@ -219,6 +226,38 @@ function setup_db ($region, $database) {
 
 	printf ("passwd %s\n", $db_passwd);
 
+	if ($stkinfo['vpc']) {
+		$subnet_group_name = "db_subnet_group";
+		
+		$val = slimstk_aws (array ("rds", "describe-db-subnet-groups"));
+		$match = 0;
+		foreach ($val['DBSubnetGroups'] as $group) {
+			if (strcmp ($group['DBSubnetGroupName'],
+				    $subnet_group_name) == 0) {
+				$match = 1;
+				break;
+			}
+		}
+
+		if ($match == 0) {
+			printf ("create db subnet group\n");
+
+			$subnet_ids = json_decode (slimstk_getvar_region (
+							   "subnet_ids"));
+
+			$args = array ("rds", "create-db-subnet-group");
+			$args[] = "--db-subnet-group-name";
+			$args[] = $subnet_group_name;
+			$args[] = "--db-subnet-group-description";
+			$args[] = $subnet_group_name;
+			$args[] = "--subnet-ids";
+			$args[] = $subnet_ids;
+			slimstk_aws ($args);
+		}
+
+		$sgdb = slimstk_getvar_region ("sgdb.groupid");
+	}
+
 	$args = array ("rds", "create-db-instance");
 	$args[] = "--db-instance-identifier";
 	$args[] = $database;
@@ -226,6 +265,10 @@ function setup_db ($region, $database) {
 	$args[] = "5"; /* gigabytes, range 5..3072 */
 	$args[] = "--db-instance-class";
 	$args[] = "db.t1.micro";
+	if ($stkinfo['vpc']) {
+		$args[] = "--db-subnet-group-name";
+		$args[] = $subnet_group_name;
+	}
 	$args[] = "--vpc-security-group-ids";
 	$args[] = slimstk_getvar_region ("sgdb.groupid");
 	$args[] = "--engine";
@@ -279,8 +322,6 @@ function setup_elb ($stkname) {
 		return ($lb['DNSName']);
 	}
 
-	$avzones = get_availability_zones ();
-
 	$listeners = array ();
 	$listeners[] = array (
 		"Protocol" => "HTTP",
@@ -300,8 +341,14 @@ function setup_elb ($stkname) {
 	$args[] = $elbname;
 	$args[] = "--listeners";
 	$args[] = json_encode ($listeners);
-	$args[] = "--availability-zones";
-	$args[] = json_encode ($avzones);
+	if ($stkinfo['vpc']) {
+		$subnet_ids = json_decode(slimstk_getvar_region("subnet_ids"));
+		$args[] = "--subnets";
+		$args[] = $subnet_ids;
+	} else {
+		$args[] = "--availability-zones";
+		$args[] = json_encode (get_availability_zones ());
+	}
 	$args[] = "--security-groups";
 	$args[] = slimstk_getvar_region ("sgext.groupid");
 	$val = slimstk_aws ($args);
@@ -447,6 +494,158 @@ function setup_s3 () {
 	}
 }
 
+function find_subnet_by_avzone ($subnets, $avzone) {
+	foreach ($subnets as $subnet) {
+		if (strcmp ($subnet['AvailabilityZone'], $avzone) == 0)
+			return ($subnet);
+	}
+	return (NULL);
+}
+
+function find_free_addr ($subnets, $vpc_addr) {
+	$parts = explode (".", $vpc_addr);
+	for ($netnum = 1; $netnum <= 10; $netnum++) {
+		$parts[2] = $netnum;
+		$addr = implode (".", $parts);
+
+		$cidr = sprintf ("%s/24", $addr);
+		$used = 0;
+		foreach ($subnets as $subnet) {
+			if (strcmp ($subnet['CidrBlock'], $cidr) == 0) {
+				$used = 1;
+				break;
+			}
+		}
+		if ($used == 0)
+			return ($addr);
+	}
+
+	return (NULL);
+}
+
+function setup_vpc ($region) {
+	printf ("setting up vpc...\n");
+
+	slimstk_set_region ($region);
+
+	$vpc_addr = "10.0.0.0";
+	$cidr_block = sprintf ("%s/16", $vpc_addr);
+
+	$args = array ("ec2", "describe-vpcs");
+	$val = slimstk_aws ($args);
+	$vpcs = $val['Vpcs'];
+	$match = 0;
+	foreach ($vpcs as $vpc) {
+		if (strcmp ($vpc['CidrBlock'], $cidr_block) == 0) {
+			$match = 1;
+			$vpc_id = $vpc['VpcId'];
+			break;
+		}
+	}
+
+	if ($match == 0) {
+		printf ("creating vpc\n");
+		$args = array ("ec2", "create-vpc");
+		$args[] = "--cidr-block";
+		$args[] = $cidr_block;
+		$val = slimstk_aws ($args);
+		if (($vpc = @$val['Vpc']) == NULL) {
+			printf ("error creating vpc\n");
+			exit (1);
+		}
+		$vpc_id = $vpc['VpcId'];
+	}
+
+	$avzones = get_availability_zones ();
+	sort ($avzones);
+
+	$val = slimstk_aws (array ("ec2", "describe-subnets"));
+	$subnets = $val['Subnets'];
+
+	$subnet_ids = array ();
+	foreach ($avzones as $avzone) {
+		if (($subnet = find_subnet_by_avzone($subnets,$avzone))==NULL){
+			$addr = find_free_addr ($subnets, $vpc_addr);
+			if ($addr == NULL) {
+				printf ("no address available for subnet\n");
+				exit (1);
+			}
+
+			$cidr = sprintf ("%s/24", $addr);
+
+			printf ("create subnet for %s %s\n", $avzone, $cidr);
+
+			$args = array ("ec2", "create-subnet");
+			$args[] = "--vpc-id";
+			$args[] = $vpc_id;
+			$args[] = "--cidr-block";
+			$args[] = $cidr;
+			$args[] = "--availability-zone";
+			$args[] = $avzone;
+			$val = slimstk_aws ($args);
+			$subnet = $val['Subnet'];
+			$subnets[] = $subnet;
+		}
+
+		$subnet_ids[] = $subnet['SubnetId'];
+
+		if (! @$subnet['MapPublicIpOnLaunch']) {
+			$args = array ("ec2", "modify-subnet-attribute");
+			$args[] = "--subnet-id";
+			$args[] = $subnet['SubnetId'];
+			$args[] = "--map-public-ip-on-launch";
+			slimstk_aws ($args);
+		}
+	}
+	file_put_contents ("TMP.subnets", json_encode ($subnets));
+
+	sort ($subnet_ids);
+	slimstk_putvar_region ("subnet_ids", json_encode ($subnet_ids));
+
+	$args = array ("ec2", "describe-internet-gateways");
+	$val = slimstk_aws ($args);
+	$match = 0;
+	foreach ($val['InternetGateways'] as $gw) {
+		foreach ($gw['Attachments'] as $att) {
+			if (strcmp ($att['VpcId'], $vpc_id) == 0) {
+				$match = 1;
+				break;
+			}
+		}
+		if ($match)
+			break;
+	}
+
+	if ($match == 0) {
+		printf ("create internet gateway\n");
+		$args = array ("ec2", "create-internet-gateway");
+		$val = slimstk_aws ($args);
+		$gw = $val['InternetGateway'];
+
+		$gw_id = $gw['InternetGatewayId'];
+
+		$args = array ("ec2", "attach-internet-gateway");
+		$args[] = "--internet-gateway-id";
+		$args[] = $gw_id;
+		$args[] = "--vpc-id";
+		$args[] = $vpc_id;
+		slimstk_aws ($args);
+	}
+
+	if (0) {
+		$args = array ("ec2", "create-route");
+		$args[] = "--route-table-id";
+		$args[] = $route_table_id;
+		$args[] = "--destination-cidr-block";
+		$args[] = "0.0.0.0/0";
+		$args[] = "--gateway-id";
+		$args[] = $gateway_id;
+		slimstk_aws ($args);
+	}
+
+	slimstk_putvar_region ("vpc_id", $vpc_id);
+}
+
 /* ================================================================ */
 
 setup_s3 ();
@@ -463,11 +662,14 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 
 	$region_done[$region] = 1;
 
-	setup_security_group ($region,
+	if (@$stkinfo['vpc'])
+		setup_vpc ($region);
+
+	setup_security_group ($stkinfo,
 			      "sgext",
 			      array ($alternative_ssh_port, 80, 443),
 			      NULL);
-	setup_security_group ($region,
+	setup_security_group ($stkinfo,
 			      "sgdb",
 			      array (3306),
 			      "sgext");
@@ -483,7 +685,7 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 	$key = sprintf ("%s|%s", $region, $db);
 	if (! isset ($region_db_done[$key])) {
 		$region_db_done[$key] = 1;
-		setup_db ($region, $db);
+		setup_db ($stkinfo, $db);
 	}
 }
 
