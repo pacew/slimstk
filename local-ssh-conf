@@ -91,4 +91,14 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 	do_stack ($stkname, $stkinfo);
 }
 
+
 write_config ();
+
+$val = 0;
+if (preg_match ('/ServerAliveInterval (.*)/', $hosts[0][1], $parts))
+	$val = $parts[1];
+
+if ($val == 0 || $val > 50) {
+	printf ("you need to set ServerAliveInterval 50"
+		." at the start of your ssh config\n");
+}
