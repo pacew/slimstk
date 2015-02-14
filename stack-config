@@ -227,7 +227,7 @@ $props['IamInstanceProfile'] = array ("Ref" => $instance_profile_name);
 $props["ImageId"] = $image_id;
 $props["InstanceType"] = "t2.micro";
 $props["SecurityGroups"] = array ($sg_name);
-if (0) {
+if (1) {
 	/* useful for early development */
 	$props["KeyName"] = "test-key-pair";
 }
