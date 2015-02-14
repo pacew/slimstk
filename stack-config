@@ -262,7 +262,10 @@ $props['IamInstanceProfile'] = array ("Ref" => $instance_profile_name);
 $props["ImageId"] = $image_id;
 $props["InstanceType"] = "t2.micro";
 $props["SecurityGroups"] = array ($sg_name);
-$props["KeyName"] = "test-key-pair";
+if (0) {
+	/* useful for early development */
+	$props["KeyName"] = "test-key-pair";
+}
 $props["UserData"] = array ("Fn::Base64" => $user_data);
 if ($stkinfo['vpc']) {
 	$props['AssociatePublicIpAddress'] = true;

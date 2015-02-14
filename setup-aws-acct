@@ -343,6 +343,12 @@ function setup_elb ($stkname) {
 		"InstanceProtocol" => "TCP",
 		"InstancePort" => 443
 		);
+	$listeners[] = array (
+		"Protocol" => "TCP",
+		"LoadBalancerPort" => $alternative_ssh_port,
+		"InstanceProtocol" => "TCP",
+		"InstancePort" => $alternative_ssh_port
+		);
 
 	$args = array ("elb", "create-load-balancer");
 	$args[] = "--load-balancer-name";

@@ -2,3 +2,4 @@ don't display db password in setup-aws-acct
 
 reduce permissions for server role
 
+test google analytics on http and https paths

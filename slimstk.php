@@ -8,8 +8,8 @@ date_default_timezone_set ($tz);
 $slimstk = NULL;
 
 /* to find safe port: sysctl net.ipv4.ip_local_port_range */
-//$alternative_ssh_port = 61953; /* randomly chosen */
-$alternative_ssh_port = 22;
+$alternative_ssh_port = 61953; /* randomly chosen */
+
 
 function slimstk_init () {
 	global $slimstk;
