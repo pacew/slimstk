@@ -1,3 +1,12 @@
+debug path:
+
+if you can log into the instance
+look at /var/log/cfn-init-cmd.log
+
+
+
+================================================================
+
 to clean up an account:
 
 do delete-stack

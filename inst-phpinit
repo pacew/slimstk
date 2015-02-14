@@ -117,7 +117,7 @@ function setup_codedeploy () {
 
 	/* this has a gratuitous 3 minutes sleep */
 	chmod ($dst, 0755);
-	$cmd = sprintf ("sudo ./%s rpm &", $dst);
+	$cmd = sprintf ("sudo %s rpm &", $dst);
 	system ($cmd);
 }
 
