@@ -678,7 +678,140 @@ function setup_vpc ($region) {
 	}
 }
 
+function equal_json ($arg1, $arg2) {
+	if (is_array ($arg1)) {
+		if (! is_array ($arg2))
+			return (0);
+
+		$keys1 = array_keys ($arg1);
+		$keys2 = array_keys ($arg2);
+		if (count ($keys1) != count ($keys2))
+			return (0);
+
+		sort ($keys1);
+		sort ($keys2);
+
+		foreach ($keys1 as $key) {
+			if (! isset ($arg1[$key]) || ! isset ($arg2[$key]))
+				return (0);
+			if (! equal_json ($arg1[$key], $arg2[$key]))
+				return (0);
+		}
+		return (1);
+	}
+	if ($arg1 == $arg2)
+		return (1);
+	return (0);
+}
+
+function setup_codedeploy () {
+	$services = array ("codedeploy.amazonaws.com");
+	$trust = array (
+		"Version" => "2012-10-17",
+		"Statement" => array (
+			array ("Sid" => "",
+			       "Effect" => "Allow",
+			       "Principal" => array ("Service" => $services),
+			       "Action" => "sts:AssumeRole"
+				)
+			)
+		);
+	
+
+	$actions = array (
+		"autoscaling:PutLifecycleHook",
+		"autoscaling:DeleteLifecycleHook",
+		"autoscaling:RecordLifecycleActionHeartbeat",
+		"autoscaling:CompleteLifecycleAction",
+		"autoscaling:DescribeAutoscalingGroups",
+		"autoscaling:PutInstanceInStandby",
+		"autoscaling:PutInstanceInService",
+		"ec2:Describe*");
+	$perms = array (
+		"Version" => "2012-10-17",
+		"Statement" => array (
+			array ("Action" => $actions,
+			       "Effect" => "Allow",
+			       "Resource" => "*"
+				)
+			)
+		);
+
+	$args = array ("iam", "list-roles");
+	$val = slimstk_aws ($args);
+	$found = 0;
+	foreach ($val['Roles'] as $role) {
+		if (strcmp ($role['RoleName'], "codedeploy") == 0) {
+			$found = 1;
+			$role_id = $role['RoleId'];
+			$role_arn = $role['Arn'];
+			break;
+		}
+	}
+	if ($found == 0) {
+		$args = array ("iam", "create-role");
+		$args[] = "--role-name";
+		$args[] = "codedeploy";
+		$args[] = "--assume-role-policy-document";
+		$args[] = json_encode ($trust);
+		$val = slimstk_aws ($args);
+		$role = $val['Role'];
+		$role_id = $role['RoleId'];
+		$role_arn = $role['Arn'];
+	} else {
+		$existing_trust = $role['AssumeRolePolicyDocument'];
+		if (! equal_json ($existing_trust, $trust)) {
+			printf ("updating codedeploy trust\n");
+			$args = array ("iam", "update-assume-role-policy");
+			$args[] = "--role-name";
+			$args[] = "codedeploy";
+			$args[] = "--policy-document";
+			$args[] = json_encode ($trust);
+			slimstk_aws ($args);
+		}
+	}
+
+	$args = array ("iam", "list-role-policies");
+	$args[] = "--role-name";
+	$args[] = "codedeploy";
+	$val = slimstk_aws ($args);
+	$found = 0;
+	foreach ($val['PolicyNames'] as $name) {
+		if (strcmp ($name, "codedeploy-perms") == 0) {
+			$found = 1;
+			break;
+		}
+	}
+
+	$perms_ok = 0;
+	if ($found) {
+		$args = array ("iam", "get-role-policy");
+		$args[] = "--role-name";
+		$args[] = "codedeploy";
+		$args[] = "--policy-name";
+		$args[] = "codedeploy-perms";
+		$val = slimstk_aws ($args);
+		$existing_policy = $val['PolicyDocument'];
+
+		if (equal_json ($perms, $existing_policy))
+			$perms_ok = 1;
+	}
+
+	if (! $perms_ok) {
+		printf ("updating codedeploy perms\n");
+		$args = array ("iam", "put-role-policy");
+		$args[] = "--role-name";
+		$args[] = "codedeploy";
+		$args[] = "--policy-name";
+		$args[] = "codedeploy-perms";
+		$args[] = "--policy-document";
+		$args[] = json_encode ($perms);
+		slimstk_aws ($args);
+	}
+}
+
 /* ================================================================ */
+setup_codedeploy ();
 
 setup_s3 ();
 
