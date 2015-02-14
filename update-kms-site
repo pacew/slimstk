@@ -7,8 +7,8 @@ slimstk_cmd_init ();
 $argv = @$_SERVER['argv'];
 
 if (($for_conf_key = @$argv[1]) == "") {
-	printf ("usage: ./deploy conf_key\n");
-	printf("   for example: ./deploy production\n");
+	printf ("usage: ./update-kms-site conf_key\n");
+	printf("   for example: ./update-kms-site production\n");
 	exit (1);
 }
 

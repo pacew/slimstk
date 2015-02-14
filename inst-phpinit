@@ -12,26 +12,6 @@ slimstk_set_region ($region);
 
 $instdir = sprintf ("%s/slimstk-inst", $_SERVER['HOME']);
 
-function setup_deploy_keys () {
-	global $slimstk, $region;
-	global $instdir;
-	foreach ($slimstk['apps'] as $app_name => $app_info) {
-		$keyname = sprintf ("deploy-%s", $app_name);
-		$kms_name = sprintf ("%s/%s.%s.kms",
-				     $instdir, $keyname, $region);
-		if (file_exists ($kms_name)) {
-			$dst = sprintf ("%s/.ssh/%s",
-					$_SERVER['HOME'], $keyname);
-			$cmd = sprintf ("./kms-decrypt %s %s %s",
-					escapeshellarg ($region),
-					escapeshellarg ($kms_name),
-					escapeshellarg ($dst));
-			system ($cmd);
-			chmod ($dst, 0600);
-		}
-	}
-}
-
 function setup_dns () {
 	global $slimstk, $stkname, $stkinfo;
 
@@ -141,7 +121,6 @@ function setup_codedeploy () {
 	system ($cmd);
 }
 
-setup_deploy_keys ();
 setup_dns ();
 setup_db_access ();
 setup_codedeploy ();

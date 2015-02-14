@@ -22,24 +22,3 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 
 	slimstk_make_kms_for_region ($gpg_name, $region);
 }
-
-$key_done = array ();
-foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-	$region = $stkinfo['region'];
-
-	foreach ($stkinfo['sites'] as $siteid => $sinfo) {
-		$app_name = preg_replace ('/-.*/', '', $siteid);
-
-		$basename = sprintf ("%s/deploy-%s",
-				     $slimstk['confdir'], $app_name);
-		$gpg_name = sprintf ("%s.gpg", $basename);
-		$kms_name = sprintf ("%s.%s.kms", $basename, $region);
-
-		if (isset ($key_done[$kms_name]))
-			continue;
-		$key_done[$kms_name] = 1;
-
-		slimstk_make_kms_for_region ($gpg_name, $region);
-	}
-}
-	

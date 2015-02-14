@@ -162,41 +162,6 @@ while (($fname = fgets ($f)) != NULL) {
 	addfile ($fname, file_get_contents ($fname), $mode);
 }
 
-$ssh_config = "";
-
-$deploy_done = array ();
-foreach ($stkinfo['sites'] as $siteid => $sinfo) {
-	$app_name = preg_replace ('/-.*$/', '', $siteid);
-	$deploy_key_kms = sprintf ("deploy-%s.%s.kms",
-				   $app_name,
-				   $stkinfo['region']);
-	
-	if (isset ($deploy_done[$deploy_key_kms]))
-		continue;
-	$deploy_done[$deploy_key_kms] = 1;
-
-	$src = sprintf ("%s/%s", $slimstk['confdir'], $deploy_key_kms);
-	if (! file_exists ($src)) {
-		printf ("%s does not exist\n", $src);
-		printf ("you need to do:\n");
-		printf ("./make-deploy-key %s\n", $app_name);
-		exit (1);
-	}
-	
-	addfile_binary ($deploy_key_kms, file_get_contents($src));
-
-	$ssh_config .= sprintf ("Host github-%s\n", $app_name);
-	$ssh_config .= "Hostname github.com\n";
-	$ssh_config .= "StrictHostKeyChecking no\n";
-	$ssh_config .= "UserKnownHostsFile=/dev/null\n";
-	$ssh_config .= "User git\n";
-	$ssh_config .= sprintf ("IdentityFile ~/.ssh/deploy-%s\n",
-				$app_name);
-	$ssh_config .= "\n";
-}
-
-addfile ("ssh_config", $ssh_config);
-
 $commands = array ();
 
 $commands['inst-init'] = array (

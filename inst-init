@@ -8,7 +8,6 @@ instdir=$HOME/slimstk-inst
 mkdir -p $HOME/.ssh
 chmod 700 $HOME/.ssh
 cp ${instdir}/authorized_keys $HOME/.ssh/authorized_keys
-cp ${instdir}/ssh_config $HOME/.ssh/config
 
 chmod a+rx $HOME
 sudo chown ec2-user $instdir
@@ -39,7 +38,5 @@ then
 fi
 
 ./inst-phpinit
-
-./deploy-site all
 
 exit 0
