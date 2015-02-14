@@ -227,6 +227,8 @@ function setup_db ($stkinfo, $database) {
 	printf ("passwd %s\n", $db_passwd);
 
 	if ($stkinfo['vpc']) {
+		$vpc_id = slimstk_getvar_region ("vpc_id");
+
 		$subnet_group_name = "db_subnet_group";
 		
 		$val = slimstk_aws (array ("rds", "describe-db-subnet-groups"));
@@ -235,6 +237,17 @@ function setup_db ($stkinfo, $database) {
 			if (strcmp ($group['DBSubnetGroupName'],
 				    $subnet_group_name) == 0) {
 				$match = 1;
+
+
+				if (strcmp ($group['VpcId'], $vpc_id) != 0) {
+					printf ("bad vpc_id for %s: ",
+						$subnet_group_name);
+					printf ("you need to delete it"
+						." in the aws console"
+						." under rds ->"
+						." subnet groups\n");
+					exit (1);
+				}
 				break;
 			}
 		}
@@ -242,20 +255,15 @@ function setup_db ($stkinfo, $database) {
 		if ($match == 0) {
 			printf ("create db subnet group\n");
 
-			$subnet_ids = json_decode (slimstk_getvar_region (
-							   "subnet_ids"));
-
 			$args = array ("rds", "create-db-subnet-group");
 			$args[] = "--db-subnet-group-name";
 			$args[] = $subnet_group_name;
 			$args[] = "--db-subnet-group-description";
 			$args[] = $subnet_group_name;
 			$args[] = "--subnet-ids";
-			$args[] = $subnet_ids;
+			$args[] = slimstk_getvar_region ("subnet_ids");
 			slimstk_aws ($args);
 		}
-
-		$sgdb = slimstk_getvar_region ("sgdb.groupid");
 	}
 
 	$args = array ("rds", "create-db-instance");
@@ -342,9 +350,8 @@ function setup_elb ($stkname) {
 	$args[] = "--listeners";
 	$args[] = json_encode ($listeners);
 	if ($stkinfo['vpc']) {
-		$subnet_ids = json_decode(slimstk_getvar_region("subnet_ids"));
 		$args[] = "--subnets";
-		$args[] = $subnet_ids;
+		$args[] = slimstk_getvar_region("subnet_ids");
 	} else {
 		$args[] = "--availability-zones";
 		$args[] = json_encode (get_availability_zones ());
@@ -556,6 +563,8 @@ function setup_vpc ($region) {
 		$vpc_id = $vpc['VpcId'];
 	}
 
+	slimstk_putvar_region ("vpc_id", $vpc_id);
+
 	$avzones = get_availability_zones ();
 	sort ($avzones);
 
@@ -604,35 +613,54 @@ function setup_vpc ($region) {
 
 	$args = array ("ec2", "describe-internet-gateways");
 	$val = slimstk_aws ($args);
-	$match = 0;
+	$gateway_id = NULL;
 	foreach ($val['InternetGateways'] as $gw) {
 		foreach ($gw['Attachments'] as $att) {
 			if (strcmp ($att['VpcId'], $vpc_id) == 0) {
-				$match = 1;
+				$gateway_id = $gw['InternetGatewayId'];
 				break;
 			}
 		}
-		if ($match)
+		if ($gateway_id)
 			break;
 	}
 
-	if ($match == 0) {
+	if ($gateway_id == NULL) {
 		printf ("create internet gateway\n");
 		$args = array ("ec2", "create-internet-gateway");
 		$val = slimstk_aws ($args);
 		$gw = $val['InternetGateway'];
 
-		$gw_id = $gw['InternetGatewayId'];
+		$gateway_id = $gw['InternetGatewayId'];
 
 		$args = array ("ec2", "attach-internet-gateway");
 		$args[] = "--internet-gateway-id";
-		$args[] = $gw_id;
+		$args[] = $gateway_id;
 		$args[] = "--vpc-id";
 		$args[] = $vpc_id;
 		slimstk_aws ($args);
 	}
 
-	if (0) {
+	$args = array ("ec2", "describe-route-tables");
+	$val = slimstk_aws ($args);
+	$have_gateway_route = 0;
+	$route_table_id = NULL;
+	foreach ($val['RouteTables'] as $rtbl) {
+		if (strcmp ($rtbl['VpcId'], $vpc_id) == 0) {
+			$route_table_id = $rtbl['RouteTableId'];
+			foreach ($rtbl['Routes'] as $rt) {
+				if (strcmp ($rt['GatewayId'],
+					    $gateway_id) == 0)
+					$have_gateway_route = 1;
+			}
+		}
+	}
+
+	if ($have_gateway_route == 0) {
+		if ($route_table_id == NULL) {
+			printf ("can't find route table for vpc\n");
+			exit (1);
+		}
 		$args = array ("ec2", "create-route");
 		$args[] = "--route-table-id";
 		$args[] = $route_table_id;
@@ -642,8 +670,6 @@ function setup_vpc ($region) {
 		$args[] = $gateway_id;
 		slimstk_aws ($args);
 	}
-
-	slimstk_putvar_region ("vpc_id", $vpc_id);
 }
 
 /* ================================================================ */

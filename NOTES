@@ -1,3 +1,21 @@
+to clean up an account:
+
+do delete-stack
+all ec2 instances should be gone, if not delete
+the load balancer and autoscaling groups should be gone, if not delete
+delete the database
+delete rds -> subnet groups
+delete vpc -> internet gateway
+delete the vpc
+delete the security group sgdb
+delete the security group sgext
+maybe delete the ec2 keypair
+maybe delete iam -> roles -> server
+
+check the dashboards for ec2, rds, vpc, cloudformation
+
+================================================================
+
 to do development on slimstk itself on an instance:
 
 git clone https://github.com/pacew/slimstk.git
