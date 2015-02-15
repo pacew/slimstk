@@ -73,7 +73,7 @@ if ($systype == "amazon") {
 	if (! @$sinfo['ssl'])
 		$enable_ssl = 0;
 
-	$config['url_name'] = $sinfo['dns_name'];
+	$config['url_name'] = $sinfo['url_name'];
 	$config['site_port'] = 80;
 
 	if ($enable_ssl) {

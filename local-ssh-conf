@@ -79,10 +79,10 @@ function do_stack ($stkname, $stkinfo) {
 	}
 
 	foreach ($stkinfo['sites'] as $siteid => $sinfo) {
-		if (($dns_name = @$sinfo['dns_name']) == NULL)
+		if (($url_name = @$sinfo['url_name']) == NULL)
 			continue;
-		update_host ($siteid, $dns_name);
-		update_host ($dns_name, $dns_name);
+		update_host ($siteid, $url_name);
+		update_host ($url_name, $url_name);
 	}
 		
 }

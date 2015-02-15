@@ -207,4 +207,3 @@ function slimstk_get_hosted_zone_id ($name) {
 	return ($hosted_zone_id);
 }
 
-

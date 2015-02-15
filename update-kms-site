@@ -35,14 +35,14 @@ if ($match == 0) {
 	exit (1);
 }
 
-if (($dns_name = @$sinfo['dns_name']) == "") {
-	printf ("no dns_name for %s\n", $for_siteid);
+if (($url_name = @$sinfo['url_name']) == "") {
+	printf ("no url_name for %s\n", $for_siteid);
 	exit (1);
 }
 
 $region = $stkinfo['region'];
 
-$gpg_name = sprintf ("%s.key.gpg", $dns_name);
+$gpg_name = sprintf ("%s.key.gpg", $url_name);
 
 slimstk_make_kms_for_region ($gpg_name, $region);
 

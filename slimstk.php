@@ -12,12 +12,18 @@ $alternative_ssh_port = 61953; /* random choice */
 
 /* we're serving a web page */
 function slimstk_webpage_init ($extended = 0) {
+	if ($extended)
+		require_once ("/var/slimstk/slimstkext.php");
 	slimstk_init_common (1, $extended);
 }
 
 /* we're a command line tool used for configuration */
 function slimstk_cmd_init ($extended = 0) {
-	require_once ("slimstkcmd.php");
+	require_once ("/var/slimstk/slimstkcmd.php");
+	if ($extended) {
+		require_once ("/var/slimstk/slimstkext.php");
+		require_once ("/var/slimstk/slimstkcmdext.php");
+	}
 	slimstk_bail_out_on_error ();
 	slimstk_init_common (0, $extended);
 }
@@ -45,6 +51,8 @@ function slimstk_init_common ($for_webpage, $extended) {
 		exit (1);
 	}
 	$slimstk['confdir'] = $confdir;
+	$slimstk['for_webpage'] = $for_webpage;
+	$slimstk['extended'] = $extended;
 
 	if (! isset ($slimstk['vars'])) {
 		$vars_file = sprintf ("%s/vars.json", $confdir);
@@ -56,15 +64,13 @@ function slimstk_init_common ($for_webpage, $extended) {
 		}
 	}
 
-	$slimstk['serving_web_page'] = $for_webpae;
-
 	if (file_exists ("/var/log/cfn-init-cmd.log")) {
 		$slimstk['running_on_aws'] = 1;
 	} else {
 		$slimstk['running_on_aws'] = 0;
 	}
 
-	if ($slimstk['serving_web_page'] || $slimstk['running_on_aws']) {
+	if ($slimstk['for_webpage'] || $slimstk['running_on_aws']) {
 		unset ($slimstk['profile']);
 	} else {
 		$slimstk['profile'] = sprintf ("%s-%s",
@@ -79,10 +85,8 @@ function slimstk_init_common ($for_webpage, $extended) {
 		$stkinfo = $slimstk['stacks'][$stkname];
 	}
 
-	if ($extended) {
-		require_once ("slimstkext.php");
-		slimstk_init_extended ($for_webpage);
-	}
+	if ($extended)
+		slimstk_init_extended ();
 }
 
 function slimstk_get_aws_param ($path) {
