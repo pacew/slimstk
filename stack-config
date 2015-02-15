@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("./slimstk.php");
+require_once ("/var/slimstk/slimstk.php");
 slimstk_cmd_init ();
 
 $argv = $_SERVER['argv'];
@@ -136,7 +136,16 @@ function addfile_binary ($dst, $content) {
 }
 
 addfile ("authorized_keys", $ssh_pub_keys);
-addfile ("stacks.json", json_encode ($slimstk));
+
+$stk = json_decode (json_encode ($slimstk), true);
+unset ($stk['confdir']);
+unset ($stk['for_webpage']);
+unset ($stk['extended']);
+unset ($stk['current_region']);
+unset ($stk['vars_file']);
+unset ($stk['running_on_aws']);
+unset ($stk['profile']);
+addfile ("stacks.json", json_encode ($stk));
 
 $db_passwd_kms = sprintf ("dbpass.%s.%s.%s.kms",
 			  $slimstk['aws_acct_name'],
@@ -164,10 +173,11 @@ while (($fname = fgets ($f)) != NULL) {
 
 $commands = array ();
 
+$cmd = sprintf ("/home/ec2-user/slimstk-inst/inst-init %s", $region);
 $commands['inst-init'] = array (
 	"command" => array ("su",
 			    "--command",
-			    "/home/ec2-user/slimstk-inst/inst-init",
+			    escapeshellcmd ($cmd),
 			    "--login",
 			    "ec2-user"
 		)
@@ -225,7 +235,14 @@ $resources[$asgroup_name] = $asgroup;
 $props = array ();
 $props['IamInstanceProfile'] = array ("Ref" => $instance_profile_name);
 $props["ImageId"] = $image_id;
-$props["InstanceType"] = "t2.micro";
+/*
+ * t2.micro .013 $9.36/mo
+ * t2.small .026 $18.72
+ * t2.medium .052 $37.44
+ * m3.medium .070 $50.40
+ * m3.large .140 $100
+ */
+$props["InstanceType"] = "m3.medium";
 $props["SecurityGroups"] = array ($sg_name);
 if (1) {
 	/* useful for early development */

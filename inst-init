@@ -1,7 +1,15 @@
 #! /bin/sh -x
 
+# call to this script is set up in ./stack-config
+# arg is region
 # user is ec2-user
 # sudo works
+
+region=$1
+
+id
+pwd
+env
 
 instdir=$HOME/slimstk-inst
 
@@ -21,7 +29,7 @@ else
     cd $HOME/slimstk-inst
 fi
 
-ln -s ${instdir} /var/slimstk
+sudo ln -s ${instdir} /var/slimstk
 
 sudo mkdir -p /www/blank
 sudo cp /dev/null /www/blank/index.html
@@ -36,5 +44,14 @@ then
 fi
 
 ./inst-phpinit
+
+bucket=aws-codedeploy-${region}
+src="s3://${bucket}/latest/install"
+dst=/tmp/codedeploy-install
+aws s3 cp $src $dst
+chmod a+x $dst
+
+# gratuitous 3 minute sleep, so put in background 
+sudo $dst rpm &
 
 exit 0

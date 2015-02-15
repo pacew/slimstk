@@ -1,9 +1,8 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("./slimstk.php");
-slimstk_init ();
-slimstk_bail_out_on_error ();
+require_once ("/var/slimstk/slimstk.php");
+slimstk_cmd_init ();
 
 printf ("setup for stack %s\n", $stkname);
 
@@ -104,23 +103,5 @@ function setup_db_access () {
 	file_put_contents ("/var/slimstk/dbparams.php", $text);
 }
 
-function setup_codedeploy () {
-	global $region;
-	$bucket = sprintf ("aws-codedeploy-%s", $region);
-	$src = sprintf ("s3://%s/latest/install", $bucket);
-	$dst = sprintf ("%s/codedeploy-install", $_SERVER['HOME']);
-
-	$args = array ("s3", "cp");
-	$args[] = $src;
-	$args[] = $dst;
-	slimstk_aws ($args);
-
-	/* this has a gratuitous 3 minutes sleep */
-	chmod ($dst, 0755);
-	$cmd = sprintf ("sudo %s rpm &", $dst);
-	system ($cmd);
-}
-
 setup_dns ();
 setup_db_access ();
-setup_codedeploy ();

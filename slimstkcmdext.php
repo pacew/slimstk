@@ -167,7 +167,7 @@ function make_virtual_host ($args) {
 }
 
 function slimstk_apache_config () {
-	global $slimstk;
+	global $slimstk, $stkinfo;
 
 	$config = array ();
 	$config['confdir'] = $slimstk['confdir'];
@@ -178,24 +178,23 @@ function slimstk_apache_config () {
 	if ($slimstk['systype'] == "amazon") {
 		$config['devel_mode'] = 0;
 
-		if (! $siteinfo) {
-			printf ("can't find siteinfo\n");
-			exit (1);
-		}
+		$sinfo = $stkinfo['sites'][$config['siteid']];
 
-		$config['url_name'] = $siteinfo['url_name'];
-		$enable_ssl = intval (@$siteinfo['ssl']);
+		$config['url_name'] = $sinfo['url_name'];
+		$enable_ssl = intval (@$sinfo['ssl']);
 
 		$config['site_port'] = 80;
 
 		$keyfile = sprintf ("%s.key", $config['url_name']);
-		$kmsfile = sprintf ("%s.%s.kms", $keyfile, $region);
+		$kmsfile = sprintf ("%s.%s.kms", $keyfile, $stkinfo['region']);
 		if (file_exists ($kmsfile)) {
 			$config['ssl_port'] = 443;
 			if (! file_exists ($keyfile)) {
 				$cmd = sprintf ("/var/slimstk/kms-decrypt"
 						." %s %s %s",
-						$region, $kmsfile, $keyfile);
+						$stkinfo['region'],
+						$kmsfile,
+						$keyfile);
 				printf ("running: %s\n", $cmd);
 				system ($cmd, $rc);
 				if ($rc != 0) {

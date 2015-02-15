@@ -1,9 +1,36 @@
+
+
 debug path:
 
 if you can log into the instance
 look at /var/log/cfn-init-cmd.log
 
+================================================================
+normal sequence:
 
+make links
+slimstk login ~/conf-SOMETHING
+setup-aws-acct
+stack-config STACKNAME
+update-kms
+update-kms-site
+delete-stack STACKNAME
+create-stack STACKNAME
+
+local-ssh-conf
+
+
+mksslkey
+ssl-clean-chain
+(ssl-chain-info)
+
+slimstk status
+================================================================
+startup times:
+
+t2.micro 3:19
+t2.medium 2:18
+m3.medium 3:14
 
 ================================================================
 
