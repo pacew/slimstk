@@ -350,16 +350,78 @@ function slimstk_activate_apache_conf ($config) {
 	system ($cmd);
 }
 
-if (0) {
-	if (maybe_create_database ($_SERVER['siteid'], NULL) < 0) {
-		printf ("can't connect to database %s\n", $_SERVER['siteid']);
-	} else {
-		slimstk_setup_schema ();
-		
-		if (file_exists ("schema.php")) {
-			$schema = NULL;
-			require_once ("schema.php");
-			dbpatch (NULL, $schema);
+function slimstk_setup_db () {
+	global $slimstk;
+
+	if (($dbname = @$slimstk['siteid']) == "") {
+		printf ("siteid must be specified to setup default db\n");
+		exit (1);
+	}
+
+	if (($pdo = make_db_connection ()) == NULL)
+		return (-1);
+
+	if ($pdo->exec (sprintf ("use `%s`", $dbname)) === false) {
+		printf ("creating database %s\n", $dbname);
+		$stmt = sprintf ("create database `%s`"
+				 ." default character set utf8"
+				 ." default collate utf8_general_ci",
+				 $dbname);
+		if ($pdo->exec ($stmt) === false) {
+			printf ("error running: %s\n", $stmt);
+			return (-1);
+		}
+		if ($slimstk['running_on_aws'] == 0) {
+			$stmt = sprintf ("grant all privileges on `%s`.*"
+					 ." to `www-data`@`localhost`",
+					 $dbname);
+			if ($pdo->exec ($stmt) === false) {
+				printf ("error running: %s\n", $stmt);
+				return (-1);
+			}
+		}
+	}
+	$pdo = NULL;
+
+	$schema = array ();
+	$schema[] = array ("name" => "sessions",
+			   "cols" => array ("session_id" => "text",
+					    "updated" => "datetime",
+					    "session" => "longtext"));
+	$schema[] = array ("name" => "seq",
+			   "cols" => array ("lastval" => "integer"));
+
+	dbpatch (NULL, $schema);
+
+	return (0);
+}
+
+function dbpatch ($db, $tables) {
+	if ($db == NULL)
+		$db = get_db ();
+	foreach ($tables as $tbl) {
+		$need_create = 0;
+		if (! table_exists ($db, $tbl['name']))
+			$need_create = 1;
+
+		foreach ($tbl['cols'] as $colname => $coltype) {
+			$stmt = NULL;
+
+			if ($need_create) {
+				$need_create = 0;
+				$stmt = sprintf ("create table %s (%s %s)",
+						 $tbl['name'],
+						 $colname, $coltype);
+			} else if (! column_exists ($db,
+						    $tbl['name'], $colname)) {
+				$stmt = sprintf ("alter table %s add %s %s",
+						 $tbl['name'],
+						 $colname, $coltype);
+			}
+			if ($stmt) {
+				printf ("dbpatch: %s\n", $stmt);
+				query_db ($db, $stmt);
+			}
 		}
 	}
 }
