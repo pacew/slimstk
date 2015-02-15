@@ -171,6 +171,21 @@ while (($fname = fgets ($f)) != NULL) {
 	addfile ($fname, file_get_contents ($fname), $mode);
 }
 
+foreach ($slimstk['files'] as $filename) {
+	$fullname = sprintf ("%s/%s", $slimstk['confdir'], $filename);
+	if (file_exists ($fullname)) {
+		addfile ($filename, file_get_contents ($fullname));
+		continue;
+	}
+	$kms_name = sprintf ("%s.%s.kms", $fullname, $stkinfo['region']);
+	if (file_exists ($kms_name)) {
+		addfile_binary ($kms_name, file_get_contents ($kms_name));
+		continue;
+	}
+	printf ("can't find required file %s\n", $fullname);
+	exit (1);
+}
+
 $commands = array ();
 
 $cmd = sprintf ("/home/ec2-user/slimstk-inst/inst-init %s", $region);
@@ -242,7 +257,7 @@ $props["ImageId"] = $image_id;
  * m3.medium .070 $50.40
  * m3.large .140 $100
  */
-$props["InstanceType"] = "m3.medium";
+$props["InstanceType"] = "m2.small";
 $props["SecurityGroups"] = array ($sg_name);
 if (1) {
 	/* useful for early development */

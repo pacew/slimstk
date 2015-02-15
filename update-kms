@@ -22,3 +22,21 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 
 	slimstk_make_kms_for_region ($gpg_name, $region);
 }
+
+$region_done = array ();
+foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	$region = $stkinfo['region'];
+
+	if (isset ($region_done[$region]))
+		continue;
+	$region_done[$region] = 1;
+
+	foreach ($slimstk['files'] as $filename) {
+		$fullname = sprintf ("%s/%s", $slimstk['confdir'], $filename);
+		$gpg_name = sprintf ("%s.gpg", $fullname);
+		if (! file_exists ($gpg_name))
+			continue;
+		$kms_name = sprintf ("%s.%s.kms", $fullname, $region);
+		slimstk_make_kms_for_region ($gpg_name, $region);
+	}
+}

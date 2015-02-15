@@ -1,3 +1,5 @@
+scp `cat INST-FILES` finance2-production:slimstk-inst/.
+then redeploy
 
 
 debug path:
@@ -31,6 +33,7 @@ startup times:
 t2.micro 3:19
 t2.medium 2:18
 m3.medium 3:14
+m3.medium 3:40
 
 ================================================================
 

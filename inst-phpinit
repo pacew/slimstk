@@ -56,6 +56,36 @@ function setup_dns () {
 	slimstk_aws ($args);
 }
 
+function decrypt_files () {
+	global $instdir, $stkinfo;
+
+	$desired_suffix = sprintf (".%s.kms", $stkinfo['region']);
+	$suffixlen = strlen ($desired_suffix);
+
+	$dir = opendir ($instdir);
+	while (($name = readdir ($dir)) != NULL) {
+		$kms_name = sprintf ("%s/%s", $instdir, $name);
+		$suffix = substr ($kms_name, - $suffixlen);
+		if (strcmp ($suffix, $desired_suffix) != 0)
+			continue;
+		$len = strlen ($kms_name);
+		$clear_name = substr ($kms_name, 0, - $suffixlen);
+		
+		printf ("decrypt %s\n", $kms_name);
+
+		$cmd = sprintf ("aws --region %s kms decrypt"
+				." --ciphertext-blob fileb://%s"
+				." --query Plaintext"
+				." --output text",
+				escapeshellarg ($stkinfo['region']),
+				escapeshellarg ($kms_name));
+		printf("%s\n", $cmd);
+		$val_base64 = shell_exec ($cmd);
+		$cleartext = base64_decode ($val_base64);
+		file_put_contents ($clear_name, $cleartext);
+	}
+}
+
 function setup_db_access () {
 	global $slimstk, $stkname, $stkinfo;
 	global $instdir, $region;
@@ -65,22 +95,12 @@ function setup_db_access () {
 	$db_passwd_base = sprintf ("dbpass.%s.%s",
 				   $slimstk['aws_acct_name'], $database);
 
-	$db_passwd_kms = sprintf ("%s/%s.%s.kms",
-				  $instdir, $db_passwd_base, $region);
-
-	if (! file_exists ($db_passwd_kms)) {
-		printf ("%s does not exist\n", $db_passwd_kms);
+	if (! file_exists ($db_passwd_base)) {
+		printf ("%s does not exist\n", $db_passwd_base);
 		return;
 	}
 
-	$cmd = sprintf ("aws --region %s kms decrypt"
-			." --ciphertext-blob fileb://%s"
-			." --query Plaintext"
-			." --output text",
-			escapeshellarg ($region),
-			escapeshellarg ($db_passwd_kms));
-	$val_base64 = shell_exec ($cmd);
-	$db_passwd = trim (base64_decode ($val_base64));
+	$db_passwd = trim (file_get_contents ($db_passwd_base));
 
 	$db_host = slimstk_getvar_region ("dbhost.db");
 
@@ -102,6 +122,8 @@ function setup_db_access () {
 			 $db_host, $db_passwd);
 	file_put_contents ("/var/slimstk/dbparams.php", $text);
 }
+
+decrypt_files ();
 
 setup_dns ();
 setup_db_access ();
