@@ -21,15 +21,7 @@ else
     cd $HOME/slimstk-inst
 fi
 
-# matches SFILES in Makefile
-SFILES=slimstk.php slimstkapp.php slimstk-login slimstk-status slimstk-install
-
-sudo mkdir -p /var/slimstk
-sudo chown -R ec2-user /var/slimstk
-for f in ${SFILES}
-do
-    cp ${f} /var/slimstk/.
-done
+ln -s ${instdir} /var/slimstk
 
 sudo mkdir -p /www/blank
 sudo cp /dev/null /www/blank/index.html

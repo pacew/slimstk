@@ -3,3 +3,6 @@ httpd-extra.conf
 inst-init
 inst-phpinit
 slimstk.php
+slimstkcmd.php
+slimstkext.php
+slimstkcmdext.php
