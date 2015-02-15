@@ -3,7 +3,8 @@ all:
 SDIR=/var/slimstk
 
 # matches SFILES in inst-init
-SFILES=slimstk.php slimstkapp.php slimstk-login slimstk-status slimstk-install
+SFILES=slimstk.php slimstkcmd.php slimstkext.php \
+	slimstk-login slimstk-status
 
 links:
 	mkdir -p $(SDIR)
