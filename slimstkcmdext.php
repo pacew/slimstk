@@ -75,18 +75,25 @@ function make_ssl_params ($base) {
 function find_ssl_files ($name) {
 	global $slimstk;
 
-	$base = sprintf ("%s/%s", getcwd (), $name);
-	if (($ret = make_ssl_params ($base)) != NULL)
-		return ($ret);
+	$dirs = array ();
+	$dirs[] = getcwd ();
+	$dirs[] = $slimstk['confdir'];
+	$dirs[] = "/home/ec2-user/slimstk-inst";
+	$dirs[] = $slimstk['apache_dir'];
 
-	$base = sprintf ("%s/%s", $slimstk['apache_dir'], $name);
-	if (($ret = make_ssl_params ($base)) != NULL)
-		return ($ret);
+	foreach ($dirs as $dir) {
+		$base = sprintf ("%s/%s", $dir, $name);
+		if (($ret = make_ssl_params ($base)) != NULL)
+			return ($ret);
+	}
 
 	$wild = preg_replace ("/^[^.]*[.]/", "wildcard.", $name);
-	$base = sprintf ("%s/%s", $slimstk['apache_dir'], $wild);
-	if (($ret = make_ssl_params ($base)) != NULL)
-		return ($ret);
+
+	foreach ($dirs as $dir) {
+		$base = sprintf ("%s/%s", $dir, $wild);
+		if (($ret = make_ssl_params ($base)) != NULL)
+			return ($ret);
+	}
 
 	return (NULL);
 }
@@ -135,13 +142,7 @@ function make_virtual_host ($args) {
 
 	if ($args->ssl_flag) {
 		$ret .= sprintf ("  SSLEngine on\n");
-
-		if (($ssl = find_ssl_files ($args->name)) == NULL) {
-			printf ("can't find ssl files for %s\n", $args->name);
-			exit (1);
-		}
-
-		$ret .= $ssl;
+		$ret .= $args->ssl_files;
 	}
 		
 	$ret .= "\n";
@@ -166,7 +167,37 @@ function make_virtual_host ($args) {
 	return ($ret);
 }
 
-function slimstk_apache_config () {
+function find_client_ca ($cafile) {
+	global $slimstk;
+
+	$dirs = array ();
+	$dirs[] = getcwd ();
+	$dirs[] = $slimstk['confdir'];
+	$dirs[] = "/home/ec2-user/slimstk-inst";
+	$dirs[] = $slimstk['apache_dir'];
+	$found = 0;
+	foreach ($dirs as $dir) {
+		$fullname = sprintf ("%s/%s", $dir, $cafile);
+		if (file_exists ($fullname)) {
+			$found = 1;
+			break;
+		}
+	}
+
+	if (! $found) {
+		printf ("can't find %s\n", $cabase);
+		exit (1);
+	}
+
+	$ret = sprintf ("  SSLCACertificateFile %s\n"
+			."  SSLOptions StdEnvVars\n"
+			."  SSLVerifyClient require\n"
+			."\n",
+			$fullname);
+	return ($ret);
+}
+
+function slimstk_apache_config ($args) {
 	global $slimstk, $stkinfo;
 
 	$config = array ();
@@ -184,26 +215,7 @@ function slimstk_apache_config () {
 		$enable_ssl = intval (@$sinfo['ssl']);
 
 		$config['site_port'] = 80;
-
-		$keyfile = sprintf ("%s.key", $config['url_name']);
-		$kmsfile = sprintf ("%s.%s.kms", $keyfile, $stkinfo['region']);
-		if (file_exists ($kmsfile)) {
-			$config['ssl_port'] = 443;
-			if (! file_exists ($keyfile)) {
-				$cmd = sprintf ("/var/slimstk/kms-decrypt"
-						." %s %s %s",
-						$stkinfo['region'],
-						$kmsfile,
-						$keyfile);
-				printf ("running: %s\n", $cmd);
-				system ($cmd, $rc);
-				if ($rc != 0) {
-					printf ("error running: %s\n", $cmd);
-					exit (1);
-				}
-				chmod ($keyfile, 0600);
-			}
-		}
+		$config['ssl_port'] = 443;
 	} else {
 		$config['devel_mode'] = 1;
 		global $port_base, $port_end;
@@ -225,15 +237,14 @@ function slimstk_apache_config () {
 
 	if (! isset ($config['site_port']))
 		$config['site_port'] = slimstk_alloc_port ();
-	$config['site_url'] = make_url ($config['url_name'],
-					$config['site_port'], 0);
 
-	if (! isset ($config['ssl_port']) && ! $slimstk['running_on_aws'])
-		$config['ssl_port'] = slimstk_alloc_port ();
+	$ssl_files = find_ssl_files ($config['url_name']);
 
-	if (isset ($config['ssl_port'])) {
-		$config['ssl_url'] = make_url ($config['url_name'],
-					       $config['ssl_port'], 1);
+	if ($ssl_files) { 
+		if (! isset ($config['ssl_port']))
+			$config['ssl_port'] = slimstk_alloc_port ();
+	} else {
+		unset ($config['ssl_port']);
 	}
 
 	$apache_conf = "";
@@ -253,6 +264,12 @@ function slimstk_apache_config () {
 					 $name, addslashes ($val));
 	}
 
+	$apache_conf .= "\n";
+
+	if (isset ($args['require_client_cert'])) {
+		$apache_conf .= find_client_ca ($args['require_client_cert']);
+	}
+
 	$apache_conf .= "</Directory>\n";
 	$apache_conf .= "\n";
 
@@ -267,13 +284,22 @@ function slimstk_apache_config () {
 		$args->name = $config['url_name'];
 		$args->port = $config['ssl_port'];
 		$args->ssl_flag = 1;
+		$args->ssl_files = $ssl_files;
 		$apache_conf .= make_virtual_host ($args);
 	}
 
 	@unlink ("TMP.conf");
 	file_put_contents ("TMP.conf", $apache_conf);
-
 	$config['apache_conf_text'] = $apache_conf;
+
+	$config['site_url'] = make_url ($config['url_name'],
+					$config['site_port'], 0);
+
+	if (isset ($config['ssl_port'])) {
+		$config['ssl_url'] = make_url ($config['url_name'],
+					       $config['ssl_port'], 1);
+	}
+
 	return ($config);
 }
 

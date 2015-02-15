@@ -179,7 +179,8 @@ foreach ($slimstk['files'] as $filename) {
 	}
 	$kms_name = sprintf ("%s.%s.kms", $fullname, $stkinfo['region']);
 	if (file_exists ($kms_name)) {
-		addfile_binary ($kms_name, file_get_contents ($kms_name));
+		addfile_binary (basename ($kms_name),
+				file_get_contents ($kms_name));
 		continue;
 	}
 	printf ("can't find required file %s\n", $fullname);
@@ -257,7 +258,7 @@ $props["ImageId"] = $image_id;
  * m3.medium .070 $50.40
  * m3.large .140 $100
  */
-$props["InstanceType"] = "m2.small";
+$props["InstanceType"] = "t2.small";
 $props["SecurityGroups"] = array ($sg_name);
 if (1) {
 	/* useful for early development */
