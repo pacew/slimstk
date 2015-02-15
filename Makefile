@@ -1,7 +1,12 @@
 all:
 
-install-links:
-	mkdir -p /var/slimstk
-	ln -sf `pwd`/slimstk.php /var/slimstk/slimstk.php
-	ln -sf `pwd`/slimstk-login /usr/local/bin/slimstk-login
-	ln -sf `pwd`/slimstk-status /usr/local/bin/slimstk-status
+SDIR=/var/slimstk
+
+# matches SFILES in inst-init
+SFILES=slimstk.php slimstkapp.php slimstk-login slimstk-status slimstk-install
+
+links:
+	mkdir -p $(SDIR)
+	for f in $(SFILES); do ln -sf `pwd`/$$f /var/slimstk; done
+	ln -sf `pwd`/slimstk /usr/local/bin/slimstk
+

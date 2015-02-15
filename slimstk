@@ -1,0 +1,21 @@
+#! /bin/sh
+
+if [ $# -lt 1 ]
+then
+    echo "usage: slimstk op args..."
+    exit 1
+fi
+
+op=$1
+shift
+
+prog=/var/slimstk/slimstk-${op}
+if [ ! -x $prog ]
+then
+    echo "$prog unknown"
+    exit 1
+fi
+
+exec $prog "$@"
+
+
