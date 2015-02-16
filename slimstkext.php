@@ -622,9 +622,16 @@ function mktable ($hdr, $rows) {
 		else
 			$class = "lth";
 		foreach ($hdr as $heading) {
-			$ret .= sprintf ("<th class='%s'>", $class);
-			$ret .= $heading;
-			$ret .= "</th>\n";
+			if (is_array ($heading)) {
+				$c = $heading[0];
+				$v = $heading[1];
+			} else {
+				$c = "";
+				$v = $heading;
+			}
+
+			$ret .= sprintf ("<th class='%s %s'>%s</th>",
+					 $class, $c, $v);
 
 			$colidx++;
 			$class = "mth";
