@@ -148,6 +148,7 @@ function update_deployment_groups () {
 	$val = slimstk_aws ($args);
 	$applications = $val['applications'];
 
+	$need_sleep = 0;
 	foreach ($applications as $app_name) {
 		$args = array ("deploy", "list-deployment-groups");
 		$args[] = "--application-name";
@@ -157,12 +158,22 @@ function update_deployment_groups () {
 		$deployment_groups = $val['deploymentGroups'];
 
 		foreach ($deployment_groups as $conf_key) {
-			$siteid = sprintf ("%s-%s", $app_name, $gname);
+			$siteid = sprintf ("%s-%s", $app_name, $conf_key);
 			if (isset ($stkinfo['sites'][$siteid])) {
-				set_asgroup ($app_name, $conf_key,
-					     $asgroup_name);
+				if (set_asgroup ($app_name, $conf_key,
+						 $asgroup_name)) {
+					$need_sleep = 1;
+				}
 			}
 		}
+	}
+
+	if ($need_sleep) {
+		$amount = 60;
+		printf ("updated a deployment group ... sleeping %d\n",
+			$amount);
+		sleep ($amount);
+		printf ("proceeding...\n");
 	}
 }
 
@@ -182,18 +193,20 @@ function set_asgroup ($app_name, $conf_key, $asgroup_name) {
 			break;
 		}
 	}
-	if (! $found) {
-		printf ("updating %s-%s to asgroup %s\n",
-			$app_name, $conf_key, $asgroup_name);
-		$args = array ("deploy", "update-deployment-group");
-		$args[] = "--application-name";
-		$args[] = $app_name;
-		$args[] = "--current-deployment-group-name";
-		$args[] = $conf_key;
-		$args[] = "--auto-scaling-groups";
-		$args[] = $asgroup_name;
-		slimstk_aws ($args);
-	}
+	if ($found)
+		return (0);
+
+	printf ("updating %s-%s to asgroup %s\n",
+		$app_name, $conf_key, $asgroup_name);
+	$args = array ("deploy", "update-deployment-group");
+	$args[] = "--application-name";
+	$args[] = $app_name;
+	$args[] = "--current-deployment-group-name";
+	$args[] = $conf_key;
+	$args[] = "--auto-scaling-groups";
+	$args[] = $asgroup_name;
+	slimstk_aws ($args);
+	return (1);
 }
 
 decrypt_files ();

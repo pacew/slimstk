@@ -9,3 +9,6 @@ test google analytics on http and https paths
 
 have stack create automatically update auto scaling groups in all
 deployment groups
+
+remove test-key-pair (or work out a better way - maybe stack creator's key)
+
