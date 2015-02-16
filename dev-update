@@ -1,0 +1,3 @@
+#! /bin/sh
+
+scp `cat INST-FILES` finance2-production:slimstk-inst/.

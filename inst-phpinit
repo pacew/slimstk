@@ -123,7 +123,81 @@ function setup_db_access () {
 	file_put_contents ("/var/slimstk/dbparams.php", $text);
 }
 
+function update_deployment_groups () {
+	global $stkname, $stkinfo;
+
+	printf ("update deployment groups\n");
+
+	$elb_name = sprintf ("%selb", $stkname);
+
+	$args = array ("autoscaling", "describe-auto-scaling-groups");
+	$val = slimstk_aws ($args);
+	$asgroup_name = NULL;
+	foreach ($val['AutoScalingGroups'] as $group) {
+		foreach ($group['LoadBalancerNames'] as $bname) {
+			if (strcmp ($bname, $elb_name) == 0) {
+				$asgroup_name = $group['AutoScalingGroupName'];
+				break;
+			}
+		}
+	}
+
+	printf( "asgroup_name %s\n", $asgroup_name);
+
+	$args = array ("deploy", "list-applications");
+	$val = slimstk_aws ($args);
+	$applications = $val['applications'];
+
+	foreach ($applications as $app_name) {
+		$args = array ("deploy", "list-deployment-groups");
+		$args[] = "--application-name";
+		$args[] = $app_name;
+		$val = slimstk_aws ($args);
+		$found = 0;
+		$deployment_groups = $val['deploymentGroups'];
+
+		foreach ($deployment_groups as $conf_key) {
+			$siteid = sprintf ("%s-%s", $app_name, $gname);
+			if (isset ($stkinfo['sites'][$siteid])) {
+				set_asgroup ($app_name, $conf_key,
+					     $asgroup_name);
+			}
+		}
+	}
+}
+
+function set_asgroup ($app_name, $conf_key, $asgroup_name) {
+	$args = array ("deploy", "get-deployment-group");
+	$args[] = "--application-name";
+	$args[] = $app_name;
+	$args[] = "--deployment-group-name";
+	$args[] = $conf_key;
+	$val = slimstk_aws ($args);
+	$groups = $val['deploymentGroupInfo']['autoScalingGroups'];
+	
+	$found = 0;
+	foreach ($groups as $group) {
+		if (strcmp ($group['name'], $asgroup_name) == 0) {
+			$found = 1;
+			break;
+		}
+	}
+	if (! $found) {
+		printf ("updating %s-%s to asgroup %s\n",
+			$app_name, $conf_key, $asgroup_name);
+		$args = array ("deploy", "update-deployment-group");
+		$args[] = "--application-name";
+		$args[] = $app_name;
+		$args[] = "--current-deployment-group-name";
+		$args[] = $conf_key;
+		$args[] = "--auto-scaling-groups";
+		$args[] = $asgroup_name;
+		slimstk_aws ($args);
+	}
+}
+
 decrypt_files ();
 
 setup_dns ();
 setup_db_access ();
+update_deployment_groups ();
