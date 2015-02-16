@@ -166,6 +166,12 @@ function make_virtual_host ($args) {
 	if (0) {
 		$ret .= "  LogLevel debug\n";
 	}
+
+	if (isset ($args->require_client_cert)) {
+		$ret .= find_client_ca ($args->require_client_cert);
+	}
+
+
 	$ret .= "</VirtualHost>\n\n";
 
 	return ($ret);
@@ -201,7 +207,7 @@ function find_client_ca ($cafile) {
 	return ($ret);
 }
 
-function slimstk_apache_config ($args) {
+function slimstk_apache_config ($global_args) {
 	global $slimstk, $stkinfo;
 
 	$config = array ();
@@ -275,10 +281,6 @@ function slimstk_apache_config ($args) {
 
 	$apache_conf .= "\n";
 
-	if (isset ($args['require_client_cert'])) {
-		$apache_conf .= find_client_ca ($args['require_client_cert']);
-	}
-
 	$apache_conf .= "</Directory>\n";
 	$apache_conf .= "\n";
 
@@ -294,6 +296,7 @@ function slimstk_apache_config ($args) {
 		$args->port = $config['ssl_port'];
 		$args->ssl_flag = 1;
 		$args->ssl_files = $ssl_files;
+		$args->require_client_cert = $global_args['require_client_cert'];
 		$apache_conf .= make_virtual_host ($args);
 	}
 
