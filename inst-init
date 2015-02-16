@@ -43,7 +43,9 @@ then
  >> /etc/httpd/conf/httpd.conf"
 fi
 
+date
 ./inst-phpinit
+date
 
 bucket=aws-codedeploy-${region}
 src="s3://${bucket}/latest/install"
@@ -51,7 +53,9 @@ dst=/tmp/codedeploy-install
 aws s3 cp $src $dst
 chmod a+x $dst
 
+date
 # gratuitous 3 minute sleep, so put in background 
 sudo $dst rpm &
+date
 
 exit 0

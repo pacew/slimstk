@@ -67,6 +67,37 @@ function setup_server_role () {
 	setup_role ($role_name, $policy, $trust);
 }
 
+function setup_instance_profile () {
+	$profile_name = "inst-profile";
+
+	$args = array ("iam", "list-instance-profiles");
+	$val = slimstk_aws ($args);
+	$found = 0;
+	foreach ($val['InstanceProfiles'] as $profile) {
+		if (strcmp ($profile['InstanceProfileName'],
+			    $profile_name) == 0) {
+			$found = 1;
+			break;
+		}
+	}
+
+	if ($found == 0) {
+		$args = array ("iam", "create-instance-profile");
+		$args[] = "--instance-profile-name";
+		$args[] = $profile_name;
+		slimstk_aws ($args);
+
+		$args = array ("iam", "add-role-to-instance-profile");
+		$args[] = "--instance-profile-name";
+		$args[] = $profile_name;
+		$args[] = "--role-name";
+		$args[] = "server";
+		slimstk_aws ($args);
+	}
+}
+setup_instance_profile ();
+exit ();
+
 function find_security_group ($group_name) {
 	$args = array ("ec2", "describe-security-groups");
 	$val = slimstk_aws ($args);

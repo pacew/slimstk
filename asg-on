@@ -1,0 +1,185 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/var/slimstk/slimstkcmd.php");
+slimstk_cmd_init ();
+
+$argv = $_SERVER['argv'];
+
+$stkname = trim (@$argv[1]);
+
+if ($stkname == "") {
+	printf ("usage: stack-create stackname\n");
+	exit (1);
+}
+
+if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
+	printf ("unknown stack %s for account %s\n",
+		$stkname, $slimstk['aws_acct_name']);
+	exit (1);
+}
+$region = $stkinfo['region'];
+slimstk_set_region ($region);
+
+$elb_name = sprintf ("%selb", $stkname);
+$asg_name = sprintf ("%sasg", $stkname);
+$lconfig_name = sprintf ("%slaunch", $stkname);
+$profile_name = "inst-profile";
+
+$sgext_groupid = slimstk_getvar_region ("sgext.groupid");
+
+$subnet_ids = json_decode (slimstk_getvar_region ("subnet_ids"));
+
+/* http://aws.amazon.com/amazon-linux-ami/ */
+/* we use Amazon Linux HVM EBS-Backed 64-bit */
+/* first experiments were with "ami-b66ed3de" */
+
+$images = array ();
+$images['us-east-1'] = "ami-146e2a7c"; /* AMI 2014.09.2 released 2015-01-29 */
+$images['us-west-2'] = "ami-dfc39aef"; /* AMI 2014.09.2 released 2015-01-29 */
+$images['us-west-1'] = "ami-42908907"; /* AMI 2014.09.2 released 2015-01-29 */
+
+if (($image_id = @$images[$region]) == NULL) {
+	printf ("can't find AMI image id - you need to update stack-config\n");
+	exit (1);
+}
+
+/*
+ * t2.micro .013 $9.36/mo
+ * t2.small .026 $18.72
+ * t2.medium .052 $37.44
+ * m3.medium .070 $50.40
+ * m3.large .140 $100
+ */
+$instance_type = "t2.small";
+
+$keypair = "test-key-pair";
+
+$user_data = "#! /bin/sh\n"
+	."date > /tmp/asg-on-log\n"
+	;
+if (strlen ($user_data) >= 16 * 1024) {
+	printf ("user_data too big\n");
+	exit (1);
+}
+
+function get_launch_configuration () {
+	global $lconfig_name;
+
+	$args = array ("autoscaling", "describe-launch-configurations");
+	$val = slimstk_aws ($args);
+	$found = 0;
+	foreach ($val['LaunchConfigurations'] as $lconfig) {
+		if ($lconfig['LaunchConfigurationName'] == $lconfig_name) {
+			return ($lconfig);
+		}
+	}
+	return (NULL);
+}
+
+$remake_lconfig = 0;
+
+if (($lconfig = get_launch_configuration ()) != NULL) {
+	if (array_search ($sgext_groupid,
+			  $lconfig['SecurityGroups']) === FALSE) {
+		printf ("need to update lconfig security group\n");
+		$remake_lconfig = 1;
+	}
+
+	if (strcmp (@$lconfig['IamInstanceProfile'], $profile_name) != 0) {
+		printf ("need to update lconfig profile\n");
+		$remake_lconfig = 1;
+	}
+
+	if (strcmp (base64_decode ($lconfig['UserData']), $user_data) != 0) {
+		printf ("need to update lconfig userdasta\n");
+		$remake_lconfig = 1;
+	}
+
+	if (isset ($keypair)) {
+		if (strcmp (@$lconfig['KeyName'], $keypair) != 0) {
+			printf ("need to update keypair\n");
+			$remake_lconfig = 1;
+		}
+	}
+
+	if (! @$lconfig['AssociatePublicIpAddress']) {
+		printf ("need to set public ip addr\n");
+		$remake_lconfig = 1;
+	}
+
+	if ($remake_lconfig) {
+		$args = array ("autoscaling", "delete-launch-configuration");
+		$args[] = "--launch-configuration-name";
+		$args[] = $lconfig_name;
+		slimstk_aws ($args);
+		$lconfig = NULL;
+	}
+}
+
+if ($lconfig == NULL) {
+	printf ("creating launch configuration...\n");
+	$args = array ("autoscaling", "create-launch-configuration");
+	$args[] = "--launch-configuration-name";
+	$args[] = $lconfig_name;
+	$args[] = "--image-id";
+	$args[] = $image_id;
+	$args[] = "--instance-type";
+	$args[] = $instance_type;
+	$args[] = "--security-groups";
+	$args[] = $sgext_groupid;
+	$args[] = "--iam-instance-profile";
+	$args[] = $profile_name;
+	$args[] = "--user-data";
+	$args[] = $user_data;
+	if (isset ($keypair)) {
+		$args[] = "--key-name";
+		$args[] = $keypair;
+	}
+	$args[] = "--associate-public-ip-address";
+	slimstk_aws ($args);
+	$lconfig = get_launch_configuration ();
+}
+
+$min_size = 0;
+$max_size = 0;
+
+function get_autoscaling_group () {
+	global $asg_name;
+
+	$args = array ("autoscaling", "describe-auto-scaling-groups");
+	$val = slimstk_aws ($args);
+	foreach ($val['AutoScalingGroups'] as $group) {
+		if ($group['AutoScalingGroupName'] == $asg_name) {
+			return ($group);
+		}
+	}
+	return (NULL);
+}
+
+if (($asg = get_autoscaling_group ()) == NULL) {
+	printf ("creating autoscaling group\n");
+	$args = array ("autoscaling", "create-auto-scaling-group");
+	$args[] = "--auto-scaling-group-name";
+	$args[] = $asg_name;
+	$args[] = "--min-size";
+	$args[] = $min_size;
+	$args[] = "--max-size";
+	$args[] = $max_size;
+	$args[] = "--launch-configuration-name";
+	$args[] = $lconfig_name;
+	$args[] = "--load-balancer-names";
+	$args[] = $elb_name;
+	$args[] = "--vpc-zone-identifier";
+	$args[] = implode (",", $subnet_ids);
+	slimstk_aws ($args);
+	$asg = get_autoscaling_group ();
+}
+
+if (array_search ($elb_name, $asg['LoadBalancerNames']) === FALSE) {
+	printf ("error: asg has no load balancer\n");
+	printf ("you probably have to delete the asg\n");
+	exit (1);
+}
+
+

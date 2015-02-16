@@ -168,12 +168,14 @@ function update_deployment_groups () {
 		}
 	}
 
+	system ("date");
 	if ($need_sleep) {
 		$amount = 60;
 		printf ("updated a deployment group ... sleeping %d\n",
 			$amount);
 		sleep ($amount);
 		printf ("proceeding...\n");
+		system("date");
 	}
 }
 
