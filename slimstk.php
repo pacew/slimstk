@@ -13,6 +13,7 @@ $alternative_ssh_port = 61953; /* random choice */
 /* we're serving a web page */
 function slimstk_webpage_init () {
 	slimstk_init_common (1);
+	slimstk_session ();
 }
 
 function slimstk_init_common ($for_webpage) {

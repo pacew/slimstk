@@ -313,6 +313,30 @@ function slimstk_session () {
 	session_start ();
 }
 
+function getsess ($name) {
+	$key = sprintf ("svar%d_%s", $_SERVER['site_port'], $name);
+	if (isset ($_SESSION[$key]))
+		return ($_SESSION[$key]);
+	return (NULL);
+}
+
+function putsess ($name, $val) {
+	$key = sprintf ("svar%d_%s", $_SERVER['site_port'], $name);
+	$_SESSION[$key] = $val;
+}
+
+function clrsess () {
+	$prefix = sprintf ("svar%d_", $_SERVER['site_port']);
+	$prefix_len = strlen ($prefix);
+	$del_keys = array ();
+	foreach ($_SESSION as $key => $val) {
+		if (strncmp ($key, $prefix, $prefix_len) == 0)
+			$del_keys[] = $key;
+	}
+	foreach ($del_keys as $key) {
+		unset ($_SESSION[$key]);
+	}
+}
 function getseq () {
 	$q = query ("select lastval"
 		    ." from seq"
@@ -336,6 +360,15 @@ function require_https () {
 		$t = sprintf ("%s/%s", $prefix, $suffix);
 		redirect ($t);
 	}
+}
+
+function make_stylesheet_link () {
+	$url = "/style.css";
+	$url = sprintf ("%s?s=%s", $url, get_cache_defeater ());
+	$ret = sprintf ("<link rel='stylesheet' href='%s' type='text/css' />\n",
+			fix_target ($url));
+
+	return ($ret);
 }
 
 function make_absolute ($rel) {
@@ -388,15 +421,320 @@ function redirect ($target) {
 	exit ();
 }
 
-function pstart () {
-	global $body;
+$urandom_chars = "0123456789abcdefghijklmnopqrstuvwxyz";
+$urandom_chars_len = strlen ($urandom_chars);
 
-	$body = "";
+function generate_urandom_string ($len) {
+	global $urandom_chars, $urandom_chars_len;
+	$ret = "";
+
+	$f = fopen ("/dev/urandom", "r");
+
+	for ($i = 0; $i < $len; $i++) {
+		$c = ord (fread ($f, 1)) % $urandom_chars_len;
+		$ret .= $urandom_chars[$c];
+	}
+	fclose ($f);
+	return ($ret);
 }
 
-function pfinish () {
-	global $body;
-	echo ($body);
+function get_cache_defeater () {
+	global $cache_defeater, $devel_mode;
+
+	if (! isset ($cache_defeater)) {
+		if (! $devel_mode
+		    && ($f = @fopen ("commit", "r")) != NULL) {
+			$val = fgets ($f);
+			fclose ($f);
+			$val = substr ($val, 7, 8);
+		} else {
+			$val = generate_urandom_string (8);
+		}
+		$cache_defeater = $val;
+	}
+
+        return ($cache_defeater);
+}
+
+function flash ($str) {
+	if (session_id ())
+		$_SESSION['flash'] .= $str;
+}
+
+function redirect_permanent ($target) {
+	$target = make_absolute ($target);
+
+	if (session_id ())
+		session_write_close ();
 	do_commits ();
+	if (ob_list_handlers ())
+		ob_clean ();
+	header ("HTTP/1.1 301 Moved Permanently");
+	header ("Location: $target");
 	exit ();
+}
+
+function fatal ($str = "error") {
+	echo ("fatal: " . htmlentities ($str));
+	exit();
+}
+
+function h($val) {
+	return (htmlentities ($val, ENT_QUOTES, 'UTF-8'));
+}
+
+/* quoting appropriate for generating xml (like rss feeds) */
+function xh($val) {
+	return (htmlspecialchars ($val, ENT_QUOTES));
+}
+
+function fix_target ($path) {
+	$path = preg_replace ('/\&/', "&amp;", $path);
+	return ($path);
+}
+
+/*
+ * use this to conditionally insert an attribute, for example,
+ * if $class may contain a class name or an empty string, then do:
+ * $body .= sprintf ("<div %s>", mkattr ("class", $class));
+ *
+ * it is safe to use more than once in the same expression:
+ * $body .= sprintf( "<div %s %s>", mkattr("class",$c), mkattr("style",$s));
+ */
+function mkattr ($name, $val) {
+	if (($val = trim ($val)) == "")
+		return ("");
+	return (sprintf ("%s='%s'",
+			 htmlspecialchars ($name, ENT_QUOTES),
+			 htmlspecialchars ($val, ENT_QUOTES)));
+}
+
+function mail_link ($email) {
+	return (sprintf ("<a href='mailto:%s'>%s</a>",
+			 fix_target ($email), h($email)));
+}
+
+function mklink ($text, $target) {
+	if (trim ($text) == "")
+		return ("");
+	if (trim ($target) == "")
+		return (h($text));
+	return (sprintf ("<a href='%s'>%s</a>",
+			 fix_target ($target), h($text)));
+}
+
+function mklink_class ($text, $target, $class) {
+	if (trim ($text) == "")
+		return ("");
+
+	$attr_href = "";
+	$attr_class = "";
+
+	if (trim ($target) != "")
+		$attr_href = sprintf ("href='%s'", fix_target ($target));
+
+	if ($class != "")
+		$attr_class = sprintf ("class='%s'", $class);
+
+	return (sprintf ("<a %s %s>%s</a>",
+			 $attr_href, $attr_class, h($text)));
+}
+
+function mklink_attr ($text, $args) {
+	$attrs = "";
+	foreach ($args as $name => $val) {
+		switch ($name) {
+		case "href":
+			$attrs .= sprintf (" href='%s'", fix_target ($val));
+			break;
+		default:
+			$attrs .= sprintf (" %s='%s'", $name, $val);
+			break;
+		}
+	}
+
+	if (! strstr ($text, "<"))
+		$text = h($text);
+
+	return (sprintf ("<a %s>%s</a>", $attrs, $text));
+
+}
+
+function mklink_nw ($text, $target) {
+	if (trim ($text) == "")
+		return ("");
+	if (trim ($target) == "")
+		return (h($text));
+	return (sprintf ("<a href='%s' target='_blank'>%s</a>",
+			 fix_target ($target), h($text)));
+}
+
+function mklink_nw_class ($text, $target, $class) {
+	if (trim ($text) == "")
+		return ("");
+	if (trim ($target) == "")
+		return (h($text));
+	return (sprintf ("<a href='%s' class='%s' target='_blank' >%s</a>",
+			 fix_target ($target), ($class), h($text)));
+}
+
+function make_confirm ($question, $button, $args) {
+	$req = parse_url ($_SERVER['REQUEST_URI']);
+	$path = $req['path'];
+
+	$ret = "";
+	$ret .= sprintf ("<form action='%s' method='post'>\n", h($path));
+	foreach ($args as $name => $val) {
+		$ret .= sprintf ("<input type='hidden'"
+				 ." name='%s' value='%s' />\n",
+				 h($name), h ($val));
+	}
+	$ret .= h($question);
+	$ret .= sprintf (" <input type='submit' value='%s' />\n", h($button));
+	$ret .= "</form>\n";
+	return ($ret);
+}
+
+function mktable ($hdr, $rows) {
+	$ncols = count ($hdr);
+	foreach ($rows as $row) {
+		$c = count ($row);
+		if ($c > $ncols)
+			$ncols = $c;
+	}
+
+	if ($ncols == 0)
+		return ("");
+
+	$ret = "";
+	$ret .= "<table class='boxed'>\n";
+	$ret .= "<thead>\n";
+	$ret .= "<tr class='boxed_pre_header'>";
+	$ret .= sprintf ("<td colspan='%d'></td>\n", $ncols);
+	$ret .= "</tr>\n";
+
+	if ($hdr) {
+		$ret .= "<tr class='boxed_header'>\n";
+
+		$colidx = 0;
+		if ($ncols == 1)
+			$class = "lrth";
+		else
+			$class = "lth";
+		foreach ($hdr as $heading) {
+			$ret .= sprintf ("<th class='%s'>", $class);
+			$ret .= $heading;
+			$ret .= "</th>\n";
+
+			$colidx++;
+			$class = "mth";
+			if ($colidx + 1 >= $ncols)
+				$class = "rth";
+		}
+		$ret .= "</tr>\n";
+	}
+	$ret .= "</thead>\n";
+
+	$ret .= "<tfoot>\n";
+	$ret .= sprintf ("<tr class='boxed_footer'>"
+			 ."<td colspan='%d'></td>"
+			 ."</tr>\n",
+			 $ncols);
+	$ret .= "</tfoot>\n";
+
+	$ret .= "<tbody>\n";
+
+	$rownum = 0;
+	foreach ($rows as $row) {
+		$this_cols = count ($row);
+
+		if ($this_cols == 0)
+			continue;
+
+		if (is_object ($row)) {
+			switch ($row->type) {
+			case 1:
+				$c = "following_row ";
+				$c .= $rownum & 1 ? "odd" : "even";
+				$ret .= sprintf ("<tr class='%s'>\n", $c);
+				$ret .= sprintf ("<td colspan='%d'>",
+						 $ncols);
+				$ret .= $row->val;
+				$ret .= "</td></tr>\n";
+				break;
+			}
+			continue;
+		}
+
+		$rownum++;
+		$ret .= sprintf ("<tr class='%s'>\n",
+				 $rownum & 1 ? "odd" : "even");
+
+		for ($colidx = 0; $colidx < $ncols; $colidx++) {
+			if($ncols == 1) {
+				$class = "lrtd";
+			} else if ($colidx == 0) {
+				$class = "ltd";
+			} else if ($colidx < $ncols - 1) {
+				$class = "mtd";
+			} else {
+				$class = "rtd";
+			}
+
+			$col = @$row[$colidx];
+
+			if (is_array ($col)) {
+				$c = $col[0];
+				$v = $col[1];
+			} else {
+				$c = "";
+				$v = $col;
+			}
+			$ret .= sprintf ("<td class='%s %s'>%s</td>\n",
+					 $class, $c, $v);
+		}
+
+		$ret .= "</tr>\n";
+	}
+
+	if (count ($rows) == 0)
+		$ret .= "<tr><td>(empty)</td></tr>\n";
+
+	$ret .= "</tbody>\n";
+	$ret .= "</table>\n";
+
+	return ($ret);
+}
+
+function make_option ($val, $curval, $desc)
+{
+	global $body;
+
+	if ($val == $curval)
+		$selected = "selected='selected'";
+	else
+		$selected = "";
+
+	$body .= sprintf ("<option value='%s' $selected>", h($val));
+	$body .= h ($desc);
+	$body .= "</option>\n";
+}
+
+function make_option2 ($val, $curval, $desc)
+{
+	$ret = "";
+
+	if ($val == $curval)
+		$selected = "selected='selected'";
+	else
+		$selected = "";
+
+	$ret .= sprintf ("<option value='%s' $selected>", $val);
+	if (trim ($desc))
+		$ret .= h ($desc);
+	else
+		$ret .= "&nbsp;";
+	$ret .= "</option>\n";
+
+	return ($ret);
 }
