@@ -1,5 +1,12 @@
 <?php
 
+require_once ("/var/slimstk/slimstk.php");
+
+function slimstk_cmd_init () {
+	slimstk_bail_out_on_error ();
+	slimstk_init_common (0);
+}
+
 function slimstk_set_region ($region) {
 	global $slimstk;
 	$slimstk['current_region'] = $region;

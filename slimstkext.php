@@ -1,5 +1,7 @@
 <?php
 
+require_once ("slimstk.php");
+
 function slimstk_init_extended () {
 	global $slimstk, $siteid, $app_name, $conf_key, $appinfo, $siteinfo;
 
@@ -229,6 +231,7 @@ function fetch ($q) {
 
 function do_commits () {
 	global $db_connections;
+
 	foreach ($db_connections as $db) {
 		if ($db->in_transaction)
 			query_db ($db, "commit");
@@ -324,4 +327,76 @@ function getseq () {
 		       $newval);
 	}
 	return ($newval);
+}
+
+function require_https () {
+	if ($_SERVER['HTTPS'] != "on") {
+		$prefix = rtrim ($_SERVER['ssl_url'], '/');
+		$suffix = ltrim ($_SERVER['REQUEST_URI'], '/');
+		$t = sprintf ("%s/%s", $prefix, $suffix);
+		redirect ($t);
+	}
+}
+
+function make_absolute ($rel) {
+	global $ssl_url, $site_url;
+
+	if (preg_match (':^http:', $rel))
+		return ($rel);
+
+	if (@$_SERVER['HTTPS'] == "on") {
+		$base_url = $ssl_url;
+	} else {
+		$base_url = $site_url;
+	}
+
+	$started_with_slash = 0;
+	if (preg_match (':^/:', $rel))
+		$started_with_slash = 1;
+
+	/* chop off leading slash */
+	$rel = preg_replace (":^/:", "", $rel);
+
+	if ($started_with_slash)
+		return ($base_url . $rel);
+
+	$parts = parse_url (@$_SERVER['REQUEST_URI']);
+	/* change /test/index.php to /test */
+	$dir = preg_replace (':/*[^/]*$:', '', $parts['path']);
+
+	/* change /test to test */
+	$dir = preg_replace (":^/:", "", $dir);
+
+	if ($dir == "") {
+		$ret = $base_url . $rel;
+	} else {
+		$ret = $base_url . $dir . "/" . $rel;
+	}
+
+	return ($ret);
+}
+
+function redirect ($target) {
+	$target = make_absolute ($target);
+
+	if (session_id ())
+		session_write_close ();
+	do_commits ();
+	if (ob_list_handlers ())
+		ob_clean ();
+	header ("Location: $target");
+	exit ();
+}
+
+function pstart () {
+	global $body;
+
+	$body = "";
+}
+
+function pfinish () {
+	global $body;
+	echo ($body);
+	do_commits ();
+	exit ();
 }

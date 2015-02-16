@@ -11,24 +11,11 @@ $slimstk = NULL;
 $alternative_ssh_port = 61953; /* random choice */
 
 /* we're serving a web page */
-function slimstk_webpage_init ($extended = 0) {
-	if ($extended)
-		require_once ("/var/slimstk/slimstkext.php");
-	slimstk_init_common (1, $extended);
+function slimstk_webpage_init () {
+	slimstk_init_common (1);
 }
 
-/* we're a command line tool used for configuration */
-function slimstk_cmd_init ($extended = 0) {
-	require_once ("/var/slimstk/slimstkcmd.php");
-	if ($extended) {
-		require_once ("/var/slimstk/slimstkext.php");
-		require_once ("/var/slimstk/slimstkcmdext.php");
-	}
-	slimstk_bail_out_on_error ();
-	slimstk_init_common (0, $extended);
-}
-
-function slimstk_init_common ($for_webpage, $extended) {
+function slimstk_init_common ($for_webpage) {
 	global $slimstk;
 
 	if (isset ($_SERVER['confdir'])) {
@@ -52,7 +39,6 @@ function slimstk_init_common ($for_webpage, $extended) {
 	}
 	$slimstk['confdir'] = $confdir;
 	$slimstk['for_webpage'] = $for_webpage;
-	$slimstk['extended'] = $extended;
 
 	if (! isset ($slimstk['vars'])) {
 		$vars_file = sprintf ("%s/vars.json", $confdir);
@@ -85,7 +71,7 @@ function slimstk_init_common ($for_webpage, $extended) {
 		$stkinfo = $slimstk['stacks'][$stkname];
 	}
 
-	if ($extended)
+	if (function_exists ("slimstk_init_extended"))
 		slimstk_init_extended ();
 }
 

@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/var/slimstk/slimstk.php");
+require_once ("/var/slimstk/slimstkcmd.php");
 slimstk_cmd_init ();
 
 $argv = $_SERVER['argv'];
@@ -20,21 +20,36 @@ if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
 }
 slimstk_set_region ($stkinfo['region']);
 
-$template = sprintf ("%s/stack-%s.json", $slimstk['confdir'], $stkname);
+$template_basename = sprintf ("stack-%s.json", $stkname);
+$template_fullname = sprintf ("%s/%s",
+			      $slimstk['confdir'], $template_basename);
 
-if (! file_exists ($template)) {
-	printf ("%s not found, run:\n", $template);
+if (! file_exists ($template_fullname)) {
+	printf ("%s not found, run:\n", $template_fullname);
 	printf ("./stack-config %s\n", $stkname);
 	exit (1);
 }
 
+$s3name = sprintf ("s3://%s/%s", $slimstk['deploy_bucket'], $template_basename);
+$cmd = sprintf ("aws s3 cp %s %s",
+		escapeshellarg ($template_fullname),
+		escapeshellarg ($s3name));
+printf ("%s\n", $cmd);
+system ($cmd, $rc);
+if ($rc != 0) {
+	printf ("error running: %s\n", $cmd);
+	exit (1);
+}
 
+$s3url = sprintf ("https://s3.amazonaws.com/%s/%s", 
+		  $slimstk['deploy_bucket'],
+		  $template_basename);
 
 $args = array ("cloudformation", "create-stack");
 $args[] = "--stack-name";
 $args[] = $stkname;
-$args[] = "--template-body";
-$args[] = sprintf ("file://%s", $template);
+$args[] = "--template-url";
+$args[] = $s3url;
 $args[] = "--capabilities";
 $args[] = "CAPABILITY_IAM";
 $val = slimstk_aws ($args);

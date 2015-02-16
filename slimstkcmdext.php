@@ -1,5 +1,9 @@
 <?php
 
+require_once ("/var/slimstk/slimstk.php");
+require_once ("/var/slimstk/slimstkext.php");
+require_once ("/var/slimstk/slimstkcmd.php");
+
 function slimstk_find_ports (&$config) {
 	global $slimstk;
 
@@ -237,12 +241,17 @@ function slimstk_apache_config ($args) {
 
 	if (! isset ($config['site_port']))
 		$config['site_port'] = slimstk_alloc_port ();
+	$config['site_url'] = make_url ($config['url_name'],
+					$config['site_port'], 0);
 
 	$ssl_files = find_ssl_files ($config['url_name']);
 
 	if ($ssl_files) { 
 		if (! isset ($config['ssl_port']))
 			$config['ssl_port'] = slimstk_alloc_port ();
+
+		$config['ssl_url'] = make_url ($config['url_name'],
+					       $config['ssl_port'], 1);
 	} else {
 		unset ($config['ssl_port']);
 	}
@@ -291,14 +300,6 @@ function slimstk_apache_config ($args) {
 	@unlink ("TMP.conf");
 	file_put_contents ("TMP.conf", $apache_conf);
 	$config['apache_conf_text'] = $apache_conf;
-
-	$config['site_url'] = make_url ($config['url_name'],
-					$config['site_port'], 0);
-
-	if (isset ($config['ssl_port'])) {
-		$config['ssl_url'] = make_url ($config['url_name'],
-					       $config['ssl_port'], 1);
-	}
 
 	return ($config);
 }

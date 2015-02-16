@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/var/slimstk/slimstk.php");
+require_once ("/var/slimstk/slimstkcmd.php");
 slimstk_cmd_init ();
 
 function setup_role ($role_name, $policy, $trust) {

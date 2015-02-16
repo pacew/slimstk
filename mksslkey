@@ -1,8 +1,8 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/var/slimstk/slimstk.php");
-slimstk_init ();
+require_once ("/var/slimstk/slimstkcmd.php");
+slimstk_cmd_init ();
 
 $keyname = @$_SERVER['argv'][1];
 
