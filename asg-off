@@ -1,0 +1,33 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/var/slimstk/slimstkcmd.php");
+slimstk_cmd_init ();
+
+$argv = $_SERVER['argv'];
+
+$stkname = trim (@$argv[1]);
+
+if ($stkname == "") {
+	printf ("usage: stack-create stackname\n");
+	exit (1);
+}
+
+if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
+	printf ("unknown stack %s for account %s\n",
+		$stkname, $slimstk['aws_acct_name']);
+	exit (1);
+}
+$region = $stkinfo['region'];
+slimstk_set_region ($region);
+
+$asg_name = sprintf ("%sasg", $stkname);
+
+$args = array ("autoscaling", "update-auto-scaling-group");
+$args[] = "--auto-scaling-group-name";
+$args[] = $asg_name;
+$args[] = "--min-size";
+$args[] = 0;
+$args[] = "--max-size";
+$args[] = 0;
+slimstk_aws ($args);

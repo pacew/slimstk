@@ -21,9 +21,11 @@ if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
 $region = $stkinfo['region'];
 slimstk_set_region ($region);
 
+$min_size = 1;
+$max_size = 2;
+
 $elb_name = sprintf ("%selb", $stkname);
 $asg_name = sprintf ("%sasg", $stkname);
-$lconfig_name = sprintf ("%slaunch", $stkname);
 $profile_name = "inst-profile";
 
 $sgext_groupid = slimstk_getvar_region ("sgext.groupid");
@@ -57,71 +59,64 @@ $keypair = "test-key-pair";
 
 $user_data = "#! /bin/sh\n"
 	."date > /tmp/asg-on-log\n"
+	."date >> /tmp/asg-on-log\n"
+	."echo hello3 >> /tmp/asg-on-log"
 	;
 if (strlen ($user_data) >= 16 * 1024) {
 	printf ("user_data too big\n");
 	exit (1);
 }
 
-function get_launch_configuration () {
-	global $lconfig_name;
+function get_autoscaling_group () {
+	global $asg_name;
 
-	$args = array ("autoscaling", "describe-launch-configurations");
+	$args = array ("autoscaling", "describe-auto-scaling-groups");
 	$val = slimstk_aws ($args);
-	$found = 0;
-	foreach ($val['LaunchConfigurations'] as $lconfig) {
-		if ($lconfig['LaunchConfigurationName'] == $lconfig_name) {
-			return ($lconfig);
+	foreach ($val['AutoScalingGroups'] as $group) {
+		if ($group['AutoScalingGroupName'] == $asg_name) {
+			return ($group);
 		}
 	}
 	return (NULL);
 }
 
-$remake_lconfig = 0;
 
-if (($lconfig = get_launch_configuration ()) != NULL) {
-	if (array_search ($sgext_groupid,
-			  $lconfig['SecurityGroups']) === FALSE) {
-		printf ("need to update lconfig security group\n");
-		$remake_lconfig = 1;
-	}
+function lconfig_ok ($lconfig) {
+	global $sgext_groupid, $profile_name, $user_data, $keypair;
+		
+	if (array_search ($sgext_groupid, $lconfig['SecurityGroups']) === FALSE)
+		return (0);
 
-	if (strcmp (@$lconfig['IamInstanceProfile'], $profile_name) != 0) {
-		printf ("need to update lconfig profile\n");
-		$remake_lconfig = 1;
-	}
+	if (strcmp (@$lconfig['IamInstanceProfile'], $profile_name) != 0)
+		return (0);
 
-	if (strcmp (base64_decode ($lconfig['UserData']), $user_data) != 0) {
-		printf ("need to update lconfig userdasta\n");
-		$remake_lconfig = 1;
-	}
+	if (strcmp (base64_decode ($lconfig['UserData']), $user_data) != 0)
+		return (0);
 
-	if (isset ($keypair)) {
-		if (strcmp (@$lconfig['KeyName'], $keypair) != 0) {
-			printf ("need to update keypair\n");
-			$remake_lconfig = 1;
-		}
-	}
+	if (strcmp (@$lconfig['KeyName'], @$keypair) != 0)
+		return (0);
 
-	if (! @$lconfig['AssociatePublicIpAddress']) {
-		printf ("need to set public ip addr\n");
-		$remake_lconfig = 1;
-	}
+	if (! @$lconfig['AssociatePublicIpAddress'])
+		return (0);
 
-	if ($remake_lconfig) {
-		$args = array ("autoscaling", "delete-launch-configuration");
-		$args[] = "--launch-configuration-name";
-		$args[] = $lconfig_name;
-		slimstk_aws ($args);
-		$lconfig = NULL;
-	}
+	return (1);
 }
 
-if ($lconfig == NULL) {
-	printf ("creating launch configuration...\n");
+function delete_launch_configuration ($name) {
+	$args = array ("autoscaling", "delete-launch-configuration");
+	$args[] = "--launch-configuration-name";
+	$args[] = $name;
+	slimstk_aws ($args);
+}
+
+function make_lconfig ($name) {
+	global $image_id, $instance_type, $sgext_groupid;
+	global $profile_name, $user_data, $keypair;
+
+	printf ("creating launch configuration %s...\n", $name);
 	$args = array ("autoscaling", "create-launch-configuration");
 	$args[] = "--launch-configuration-name";
-	$args[] = $lconfig_name;
+	$args[] = $name;
 	$args[] = "--image-id";
 	$args[] = $image_id;
 	$args[] = "--instance-type";
@@ -138,36 +133,91 @@ if ($lconfig == NULL) {
 	}
 	$args[] = "--associate-public-ip-address";
 	slimstk_aws ($args);
-	$lconfig = get_launch_configuration ();
 }
 
-$min_size = 0;
-$max_size = 0;
+/* ================================================================ */
 
-function get_autoscaling_group () {
-	global $asg_name;
+$lcinfo = array ();
 
-	$args = array ("autoscaling", "describe-auto-scaling-groups");
-	$val = slimstk_aws ($args);
-	foreach ($val['AutoScalingGroups'] as $group) {
-		if ($group['AutoScalingGroupName'] == $asg_name) {
-			return ($group);
+for ($lcnum = 1; $lcnum <= 2; $lcnum++) {
+	$lcinfo[$lcnum] = array ();
+	$lcinfo[$lcnum]['name'] = sprintf ("%slaunch%d", $stkname, $lcnum);
+	$lcinfo[$lcnum]['has_data'] = 0;
+	$lcinfo[$lcnum]['valid'] = 0;
+}
+
+$args = array ("autoscaling", "describe-launch-configurations");
+$val = slimstk_aws ($args);
+foreach ($val['LaunchConfigurations'] as $lconfig) {
+	for ($lcnum = 1; $lcnum <= 2; $lcnum++) {
+		if (strcmp ($lconfig['LaunchConfigurationName'], 
+			    $lcinfo[$lcnum]['name']) == 0) {
+			$lcinfo[$lcnum]['has_data'] = 1;
+			if (lconfig_ok ($lconfig))
+				$lcinfo[$lcnum]['valid'] = 1;
 		}
 	}
-	return (NULL);
 }
 
-if (($asg = get_autoscaling_group ()) == NULL) {
+$lc_old = 0;
+
+if (($asg = get_autoscaling_group ()) != NULL) {
+	$lcname = $asg['LaunchConfigurationName'];
+	for ($lcnum = 1; $lcnum <= 2; $lcnum++) {
+		if (strcmp ($lcinfo[$lcnum]['name'], $lcname) == 0) {
+			$lc_old = $lcnum;
+			break;
+		}
+	}
+}
+
+if ($lc_old == 0) {
+	/* nothing in use, so use slot 1, delete whatever may be in slot 2 */
+	$lc_new = 1;
+	$lc_old = 2;
+} else if ($lc_old == 1) {
+	if ($lcinfo[1]['valid']) {
+		$lc_new = 1;
+	} else {
+		$lc_new = 2;
+	}
+} else if ($lc_old == 2) {
+	if ($lcinfo[2]['valid']) {
+		$lc_new = 2;
+	} else {
+		$lc_new = 1;
+	}
+}
+
+printf ("lc_old %d; lc_new %d\n", $lc_old, $lc_new);
+for ($lcnum = 1; $lcnum <= 2; $lcnum++) {
+	printf ("%d: %s has_data=%d valid=%d\n", 
+		$lcnum,
+		$lcinfo[$lcnum]['name'],
+		$lcinfo[$lcnum]['has_data'],
+		$lcinfo[$lcnum]['valid']);
+}
+
+if (! $lcinfo[$lc_new]['valid']) {
+	if ($lcinfo[$lc_new]['has_data'])
+		delete_lconfig ($lcinfo[$lc_new]['name']);
+
+	make_lconfig ($lcinfo[$lc_new]['name']);
+	$lcinfo[$lc_new]['has_data'] = 1;
+	$lcinfo[$lc_new]['valid'] = 1;
+}
+			
+if ($asg == NULL) {
 	printf ("creating autoscaling group\n");
 	$args = array ("autoscaling", "create-auto-scaling-group");
 	$args[] = "--auto-scaling-group-name";
 	$args[] = $asg_name;
 	$args[] = "--min-size";
-	$args[] = $min_size;
+	$args[] = 0;
 	$args[] = "--max-size";
-	$args[] = $max_size;
+	$args[] = 0;
 	$args[] = "--launch-configuration-name";
-	$args[] = $lconfig_name;
+	$args[] = $lcinfo[$lc_new]['name'];
 	$args[] = "--load-balancer-names";
 	$args[] = $elb_name;
 	$args[] = "--vpc-zone-identifier";
@@ -178,8 +228,36 @@ if (($asg = get_autoscaling_group ()) == NULL) {
 
 if (array_search ($elb_name, $asg['LoadBalancerNames']) === FALSE) {
 	printf ("error: asg has no load balancer\n");
-	printf ("you probably have to delete the asg\n");
+	printf ("you probably have to delete and remake the asg\n");
 	exit (1);
 }
 
+$update_asg = 0;
 
+if ($asg['MinSize'] != $min_size)
+	$update_asg = 1;
+
+if ($asg['MaxSize'] != $max_size)
+	$update_asg = 1;
+
+if (strcmp ($asg['LaunchConfigurationName'], $lcinfo[$lc_new]['name']) != 0)
+	$update_asg = 1;
+
+if ($update_asg) {
+	$args = array ("autoscaling", "update-auto-scaling-group");
+	$args[] = "--auto-scaling-group-name";
+	$args[] = $asg_name;
+	$args[] = "--min-size";
+	$args[] = $min_size;
+	$args[] = "--max-size";
+	$args[] = $max_size;
+	$args[] = "--launch-configuration-name";
+	$args[] = $lcinfo[$lc_new]['name'];
+	slimstk_aws ($args);
+}
+
+if ($lc_old != $lc_new && $lcinfo[$lc_old]['has_data']) {
+	delete_launch_configuration ($lcinfo[$lc_old]['name']);
+	$lcinfo[$lc_old]['has_data'] = 0;
+	$lcinfo[$lc_old]['valid'] = 0;
+}
