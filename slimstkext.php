@@ -355,6 +355,10 @@ function getseq () {
 
 function require_https () {
 	if (@$_SERVER['HTTPS'] != "on") {
+		if (! isset ($_SERVER['ssl_url'])) {
+			echo ("invalid SSL configuration");
+			exit ();
+		}
 		$prefix = rtrim ($_SERVER['ssl_url'], '/');
 		$suffix = ltrim ($_SERVER['REQUEST_URI'], '/');
 		$t = sprintf ("%s/%s", $prefix, $suffix);
