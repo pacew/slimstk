@@ -93,6 +93,13 @@ function make_boot_script ($boot) {
 	$ret .= "(echo '/^Defaults.*requiretty/s/^/#/'; echo 'w')"
 		." | ed /etc/sudoers\n";
 
+	/* change to alternative ssh port */
+	global $alternative_ssh_port;
+	$ret .= sprintf ("(echo '/^#Port 22.*/s/.*/Port %d/'; echo 'w')"
+			 ." | ed /etc/ssh/sshd_config\n",
+			 $alternative_ssh_port);
+	$ret .= "service sshd restart\n";
+
 	$ret .= "mkdir -p /home/ec2-user/.ssh\n";
 	$ret .= "cat > /home/ec2-user/.ssh/authorized_keys <<EOF\n";
 	$ret .= $boot['authorized_keys'];

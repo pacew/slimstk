@@ -354,7 +354,7 @@ function getseq () {
 }
 
 function require_https () {
-	if ($_SERVER['HTTPS'] != "on") {
+	if (@$_SERVER['HTTPS'] != "on") {
 		$prefix = rtrim ($_SERVER['ssl_url'], '/');
 		$suffix = ltrim ($_SERVER['REQUEST_URI'], '/');
 		$t = sprintf ("%s/%s", $prefix, $suffix);

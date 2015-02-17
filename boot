@@ -20,6 +20,8 @@ system ("pwd");
 system ("echo umask `umask`");
 system ("env");
 
+chmod ($_SERVER['HOME'], 0755);
+
 system ("sudo mkdir -p /www/blank");
 system ("sudo cp /dev/null /www/blank/index.html");
 
@@ -31,6 +33,7 @@ $extra = "/opt/slimstk/httpd-extra.conf";
 if (! preg_match ('/# slimstk config/', file_get_contents ($httpd_conf))) {
 	system ("sudo sh -c 'cat $extra >> $httpd_conf'");
 }
+system ("sudo service httpd start");
 
 function setup_db_access () {
 	global $slimstk, $stkname, $stkinfo;
@@ -79,3 +82,14 @@ function setup_db_access () {
 slimstk_set_region ($stkinfo['region']);
 
 setup_db_access ();
+
+$src = sprintf ("s3://aws-codedeploy-%s/latest/install", $stkinfo['region']);
+$dst = "/tmp/codedeploy-install";
+system ("aws s3 cp $src $dst");
+chmod ($dst, 0755);
+system ("date");
+printf ("installing codedeploy ... this takes 3 minutes\n");
+system ("sudo /tmp/codedeploy-install auto");
+system ("date");
+
+printf ("slimstk boot done\n");

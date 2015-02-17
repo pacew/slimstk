@@ -105,17 +105,6 @@ function find_ssl_files ($name) {
 function make_virtual_host ($args) {
 	global $slimstk;
 
-	$website_dir = sprintf ("%s/website", getcwd ());
-	$dir = $website_dir;
-	while ($dir != "") {
-		if ((fileperms ($dir) & 0555) != 0555) {
-			sprintf ($cmd, "sudo chmod a+rx %s", $dir);
-			printf ("%s\n", $cmd);
-			system ($cmd);
-		}
-		$dir = preg_replace (':/[^/*]*$:', '', $dir);
-	}
-
 	$ret = "";
 
 	if ($args->port != 80 && $args->port != 443) {
@@ -135,7 +124,7 @@ function make_virtual_host ($args) {
 	$ret .= sprintf ("  ServerName %s\n", $with_www);
 	$ret .= sprintf ("  ServerAlias %s\n", $without_www);
 
-	$ret .= sprintf ("  DocumentRoot %s\n", $website_dir);
+	$ret .= sprintf ("  DocumentRoot %s\n", getcwd() . "/website");
 	$ret .= sprintf ("  FileETag none\n");
 
 	if ($slimstk['systype'] == "ubuntu")
