@@ -41,13 +41,21 @@ if (($asg = get_autoscaling_group ()) == NULL) {
 	exit (1);
 }
 
-if (($insts = $asg['Instances']) != NULL) {
-	printf ("terminating %s\n", json_encode ($insts));
-	$args = array ("ec2", "terminate-instances");
-	$args[] = "--instance-ids";
-	$args[] = json_encode ($insts);
-	slimstk_cli ($args);
+$insts = array ();
+foreach ($asg['Instances'] as $inst) {
+	$insts[] = $inst['InstanceId'];
 }
+
+foreach ($insts as $inst) {
+	$args = array ("autoscaling", "set-instance-health");
+	$args[] = "--instance-id";
+	$args[] = $inst;
+	$args[] = "--health-status";
+	$args[] = "Unhealthy";
+	$args[] = "--no-should-respect-grace-period";
+	slimstk_aws ($args);
+}
+
 
 
 
