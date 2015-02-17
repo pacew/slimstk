@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/var/slimstk/slimstkcmd.php");
+require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_cmd_init ();
 
 $db_done = array ();

@@ -21,8 +21,8 @@ function slimstk_init_common ($for_webpage) {
 
 	if (isset ($_SERVER['confdir'])) {
 		$confdir = $_SERVER['confdir'];
-	} else if (file_exists ("/var/slimstk/stacks.json")) {
-		$confdir = "/var/slimstk";
+	} else if (file_exists ("/opt/slimstk/stacks.json")) {
+		$confdir = "/opt/slimstk";
 	} else {
 		$fname = sprintf ("%s/.slimstk/current-confdir",
 				  $_SERVER['HOME']);
@@ -41,17 +41,16 @@ function slimstk_init_common ($for_webpage) {
 	$slimstk['confdir'] = $confdir;
 	$slimstk['for_webpage'] = $for_webpage;
 
-	if (! isset ($slimstk['vars'])) {
-		$vars_file = sprintf ("%s/vars.json", $confdir);
-		if (file_exists ($vars_file)) {
-			$slimstk['vars_file'] = $vars_file;
-			$slimstk['vars'] = @json_decode (
-				file_get_contents($vars_file),
-				true);
-		}
+	$vars_file = sprintf ("%s/vars.json", $confdir);
+	if (file_exists ($vars_file)) {
+		$slimstk['vars_file'] = $vars_file;
+		$slimstk['vars'] = @json_decode (
+			file_get_contents($vars_file),
+			true);
 	}
 
-	if (file_exists ("/var/log/cfn-init-cmd.log")) {
+	if (preg_match ('/Amazon.*AMI/',
+			@file_get_contents ("/etc/system-release"))) {
 		$slimstk['running_on_aws'] = 1;
 	} else {
 		$slimstk['running_on_aws'] = 0;
@@ -65,10 +64,10 @@ function slimstk_init_common ($for_webpage) {
 					       $_SERVER['USER']);
 	}
 
-	if ($slimstk['running_on_aws'] && isset ($slimstk['inst_stkname'])) {
-		/* stack-config sets inst_stkname */
+	if ($slimstk['running_on_aws']
+	    && file_exists ("/opt/slimstk/stkname")) {
 		global $stkname, $stkinfo;
-		$stkname = $slimstk['inst_stkname'];
+		$stkname = trim (file_get_contents ("/opt/slimstk/stkname"));
 		$stkinfo = $slimstk['stacks'][$stkname];
 	}
 

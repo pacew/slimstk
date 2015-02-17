@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/var/slimstk/slimstkcmd.php");
+require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_cmd_init ();
 
 function setup_role ($role_name, $policy, $trust) {
@@ -95,8 +95,6 @@ function setup_instance_profile () {
 		slimstk_aws ($args);
 	}
 }
-setup_instance_profile ();
-exit ();
 
 function find_security_group ($group_name) {
 	$args = array ("ec2", "describe-security-groups");
@@ -511,23 +509,14 @@ function setup_kms ($region) {
 function setup_s3 () {
 	global $slimstk;
 
-	$bucket = sprintf ("s3://%s", $slimstk['deploy_bucket']);
-
-	$cmd = sprintf ("aws s3 ls %s > /dev/null 2>&1",
-			escapeshellarg ($bucket));
-	system ($cmd, $rc);
-	if ($rc != 0) {
-		printf ("making bucket %s\n", $bucket);
-		$cmd = sprintf ("aws s3 mb %s", escapeshellarg ($bucket));
-		system ($cmd, $rc);
-		if ($rc != 0) {
-			printf ("error making bucket %s\n", $bucket);
+	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+		if (preg_match ('/[^-.a-z0-9]/', $stkinfo['bucket'])) {
+			printf ("illegal character in bucket name: %s\n",
+				$stkinfo['bucket']);
 			exit (1);
 		}
-	}
 
-	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-		$bucket = sprintf ("s3://%s", $stkinfo['files_bucket']);
+		$bucket = sprintf ("s3://%s", $stkinfo['bucket']);
 
 		$cmd = sprintf ("aws s3 ls %s > /dev/null 2>&1",
 				escapeshellarg ($bucket));
@@ -755,7 +744,6 @@ function setup_codedeploy () {
 			)
 		);
 	
-
 	$actions = array (
 		"autoscaling:PutLifecycleHook",
 		"autoscaling:DeleteLifecycleHook",
@@ -849,6 +837,8 @@ function setup_codedeploy () {
 }
 
 /* ================================================================ */
+setup_instance_profile ();
+
 setup_codedeploy ();
 
 setup_s3 ();
@@ -898,4 +888,3 @@ foreach ($slimstk['stacks'] as $stkname => $dummy) {
 
 
 printf ("be sure to commit any modified files in %s\n", $slimstk['confdir']);
- 

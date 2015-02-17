@@ -9,7 +9,7 @@ fi
 op=$1
 shift
 
-prog=/var/slimstk/slimstk-${op}
+prog=/opt/slimstk/slimstk-${op}
 if [ ! -x $prog ]
 then
     echo "$prog unknown"

@@ -82,7 +82,7 @@ function make_db_connection ($dbparams = NULL) {
 	if ($dbparams == NULL) {
 		if (! isset ($default_dbparams)) {
 			if ($slimstk['running_on_aws']) {
-				require_once ("/var/slimstk/dbparams.php");
+				require_once ("/opt/slimstk/dbparams.php");
 			} else {
 				/* use auth_socket access to localhost */
 				$default_dbparams = array (

@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/var/slimstk/slimstkcmd.php");
+require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_cmd_init ();
 
 $argv = $_SERVER['argv'];
@@ -71,6 +71,8 @@ $initial_pkgs = array (
 	);
 
 function make_boot_script ($boot) {
+	global $stkname;
+
 	/*
 	 * run as root in the root directory, no arguments
 	 * environment is pretty bare - here is interesting stuff:
@@ -85,25 +87,33 @@ function make_boot_script ($boot) {
 	 * apparently has no other effect
 	 */
 	$ret = "#! /bin/sh -x\n";
-
+	$ret .= "echo 'slimstk startup'\n";
+	$ret .= "date\n";
 	/* allow ec2-user to do sudo in scripts */
 	$ret .= "(echo '/^Defaults.*requiretty/s/^/#/'; echo 'w')"
 		." | ed /etc/sudoers\n";
 
+	$ret .= "mkdir -p /home/ec2-user/.ssh\n";
 	$ret .= "cat > /home/ec2-user/.ssh/authorized_keys <<EOF\n";
 	$ret .= $boot['authorized_keys'];
 	$ret .= "EOF\n";
-	$ret .= "chown ec2-user:ec2-user /home/ec2-user/authorized_keys\n";
+	$ret .= "chown -R ec2-user:ec2-user /home/ec2-user/.ssh\n";
+	$ret .= "chmod -R go-rwx /home/ec2-user/.ssh\n";
 
 	$ret .= "yum update -y\n";
+	$ret .= "date\n";
 	$ret .= sprintf ("yum install -y %s\n", implode (" ", $boot['pkgs']));
+	$ret .= "date\n";
 
 	$boot_tar = basename ($boot['boot_s3']);
-	$ret .= sprintf ("aws s3 cp %s /tmp/%s", $boot['boot_s3'], $boot_tar);
+	$ret .= sprintf ("aws s3 cp %s /tmp/%s\n", $boot['boot_s3'], $boot_tar);
 	$ret .= "mkdir /opt/slimstk\n";
 	$ret .= sprintf ("tar -C /opt/slimstk -xf /tmp/%s\n", $boot_tar);
 	$ret .= "chown -R ec2-user:ec2-user /opt/slimstk\n";
+
 	$ret .= "su --command /opt/slimstk/boot --login ec2-user\n";
+	$ret .= "echo 'slimstk boot done'\n";
+	$ret .= "date\n";
 
 	return ($ret);
 }
@@ -136,6 +146,31 @@ function build_boot_tar () {
 	}
 	$ret['authorized_keys'] = $authorized_keys;
 
+	$fname = sprintf ("dbpass.%s.%s.%s.kms",
+			  $slimstk['aws_acct_name'],
+			  $stkinfo['database'],
+			  $region);
+	$fp = array ();
+	$fp['src'] = sprintf ("%s/%s", $slimstk['confdir'], $fname);
+	$fp['dst'] = $fname;
+	$files[] = $fp;
+
+	$fp = array ();
+	$fp['src'] = sprintf ("%s/stacks.json", $slimstk['confdir']);
+	$fp['dst'] = "stacks.json";
+	$files[] = $fp;
+
+	$fp = array ();
+	$fp['src'] = sprintf ("%s/vars.json", $slimstk['confdir']);
+	$fp['dst'] = "vars.json";
+	$files[] = $fp;
+
+	file_put_contents ("TMP.stkname", $stkname . "\n");
+	$fp = array ();
+	$fp['src'] = "TMP.stkname";
+	$fp['dst'] = "stkname";
+	$files[] = $fp;
+
 	$ifiles = explode ("\n", file_get_contents ("INST-FILES"));
 	foreach ($ifiles as $fname) {
 		if (($ftime = trim ($fname)) == "")
@@ -146,18 +181,9 @@ function build_boot_tar () {
 		$files[] = $fp;
 	}
 
-	$fname = sprintf ("dbpass.%s.%s.%s.kms",
-			  $slimstk['aws_acct_name'],
-			  $stkinfo['database'],
-			  $region);
-	$fp = array ();
-	$fp['src'] = sprintf ("%s/%s", $slimstk['confdir'], $fname);
-	$fp['dst'] = $fname;
-	$files[] = $fp;
-
 	usort ($files,
 	       function ($a, $b) {
-		       return (strcmp ($a['src'], $b['src']));
+		       return (strcmp ($a['dst'], $b['dst']));
 	       });
 	$manifest = "";
 	foreach ($files as $fp) {
@@ -179,7 +205,7 @@ function build_boot_tar () {
 
 	$fp = array ();
 	$fp['src'] = "TMP.manifest";
-	$fp['dst'] = "MANIFEST";
+	$fp['dst'] = "manifest";
 	$files[] = $fp;
 
 	$cmd = "tar --absolute-names -zcf TMP.tgz";

@@ -1,8 +1,8 @@
 <?php
 
-require_once ("/var/slimstk/slimstk.php");
-require_once ("/var/slimstk/slimstkext.php");
-require_once ("/var/slimstk/slimstkcmd.php");
+require_once ("/opt/slimstk/slimstk.php");
+require_once ("/opt/slimstk/slimstkext.php");
+require_once ("/opt/slimstk/slimstkcmd.php");
 
 function slimstk_find_ports (&$config) {
 	global $slimstk;

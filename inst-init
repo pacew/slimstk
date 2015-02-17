@@ -29,7 +29,7 @@ else
     cd $HOME/slimstk-inst
 fi
 
-sudo ln -s ${instdir} /var/slimstk
+sudo ln -s ${instdir} /opt/slimstk
 
 sudo mkdir -p /www/blank
 sudo cp /dev/null /www/blank/index.html

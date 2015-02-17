@@ -1,6 +1,6 @@
 <?php
 
-require_once ("/var/slimstk/slimstk.php");
+require_once ("/opt/slimstk/slimstk.php");
 
 function slimstk_cmd_init () {
 	slimstk_bail_out_on_error ();
@@ -197,6 +197,24 @@ function slimstk_make_kms_for_region ($gpg_name, $region) {
 	file_put_contents ($kms_name, $encrypted);
 	return (0);
 }
+
+function slimstk_kms_decrypt ($kms_name) {
+	if (! preg_match ('/([^.]*)[.]kms$/', $kms_name, $parts))
+		return (NULL);
+
+	$region = $parts[1];
+
+	$cmd = sprintf ("aws --region %s kms decrypt"
+			." --ciphertext-blob fileb://%s"
+			." --query Plaintext"
+			." --output text",
+			escapeshellarg ($region),
+			escapeshellarg ($kms_name));
+	$val_base64 = shell_exec ($cmd);
+	$cleartext = base64_decode ($val_base64);
+	return ($cleartext);
+}
+
 
 function slimstk_get_hosted_zone_id ($name) {
 	$name = rtrim ($name, ".");

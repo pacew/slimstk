@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/var/slimstk/slimstkcmd.php");
+require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_cmd_init ();
 
 printf ("setup for stack %s\n", $stkname);
@@ -120,7 +120,7 @@ function setup_db_access () {
 			 ." 'passwd' => '%s'\n"
 			 .");\n",
 			 $db_host, $db_passwd);
-	file_put_contents ("/var/slimstk/dbparams.php", $text);
+	file_put_contents ("/opt/slimstk/dbparams.php", $text);
 }
 
 function update_deployment_groups () {

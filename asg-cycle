@@ -1,7 +1,7 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/var/slimstk/slimstkcmd.php");
+require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_cmd_init ();
 
 $argv = $_SERVER['argv'];
@@ -98,6 +98,18 @@ foreach ($asg['Instances'] as $asg_inst) {
 	}
 }
 
+function print_inst_ids ($prefix, $insts) {
+	printf ("%s", $prefix);
+	foreach ($insts as $asg_inst) {
+		printf (" %s", $asg_inst['InstanceId']);
+	}
+	printf ("\n");
+}
+
+print_inst_ids ("stale:", $stale_insts);
+print_inst_ids ("good:", $good_insts);
+print_inst_ids ("strange:", $strange_insts);
+
 if (count ($strange_insts) > 0) {
 	printf ("can't proceed while these insts are in strange states:\n");
 	printf ("%s\n", prettyprint_json ($strange_insts));
@@ -109,12 +121,8 @@ if (($victim = @$stale_insts[0]) == NULL) {
 	exit (0);
 }	
 
-if (count ($good_insts) == 0) {
-	if ($desired_capacity >= $max_size) {
-		printf ("want to add a new inst, but desired >= max already\n");
-		exit (1);
-	}
-
+if (count ($good_insts) == 0
+    && $desired_capacity < $max_size) {
 	$desired_capacity++;
 
 	printf ("all insts are stale ... increasing desired capcity\n");
