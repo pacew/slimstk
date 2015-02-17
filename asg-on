@@ -9,7 +9,7 @@ $argv = $_SERVER['argv'];
 $stkname = trim (@$argv[1]);
 
 if ($stkname == "") {
-	printf ("usage: stack-create stackname\n");
+	printf ("usage: asg-on stackname\n");
 	exit (1);
 }
 
@@ -34,7 +34,6 @@ $subnet_ids = json_decode (slimstk_getvar_region ("subnet_ids"));
 
 /* http://aws.amazon.com/amazon-linux-ami/ */
 /* we use Amazon Linux HVM EBS-Backed 64-bit */
-/* first experiments were with "ami-b66ed3de" */
 
 $images = array ();
 $images['us-east-1'] = "ami-146e2a7c"; /* AMI 2014.09.2 released 2015-01-29 */
@@ -57,11 +56,166 @@ $instance_type = "t2.small";
 
 $keypair = "test-key-pair";
 
-$user_data = "#! /bin/sh\n"
-	."date > /tmp/asg-on-log\n"
-	."date >> /tmp/asg-on-log\n"
-	."echo hello3 >> /tmp/asg-on-log"
-	;
+$initial_pkgs = array (
+	"mysql",
+	"mysql-server",
+	"mysql-libs",
+	"httpd",
+	"php",
+	"php-mysql",
+	"emacs",
+	"aws-cli",
+	"git",
+	"mod_ssl",
+	"php-pecl-xdebug"
+	);
+
+function make_boot_script ($boot) {
+	/*
+	 * run as root in the root directory, no arguments
+	 * environment is pretty bare - here is interesting stuff:
+	 * TERM=linux
+	 * PATH=/sbin:/usr/sbin:/bin:/usr/bin
+	 * LANG=en_US.UTF-8
+	 * (no USER)
+	 *
+	 * stdout and stderr go to /var/log/cloud-init-output.log
+	 *
+	 * if it exists with an error, it is noted in the log but
+	 * apparently has no other effect
+	 */
+	$ret = "#! /bin/sh -x\n";
+
+	/* allow ec2-user to do sudo in scripts */
+	$ret .= "(echo '/^Defaults.*requiretty/s/^/#/'; echo 'w')"
+		." | ed /etc/sudoers\n";
+
+	$ret .= "cat > /home/ec2-user/.ssh/authorized_keys <<EOF\n";
+	$ret .= $boot['authorized_keys'];
+	$ret .= "EOF\n";
+	$ret .= "chown ec2-user:ec2-user /home/ec2-user/authorized_keys\n";
+
+	$ret .= "yum update -y\n";
+	$ret .= sprintf ("yum install -y %s\n", implode (" ", $boot['pkgs']));
+
+	$boot_tar = basename ($boot['boot_s3']);
+	$ret .= sprintf ("aws s3 cp %s /tmp/%s", $boot['boot_s3'], $boot_tar);
+	$ret .= "mkdir /opt/slimstk\n";
+	$ret .= sprintf ("tar -C /opt/slimstk -xf /tmp/%s\n", $boot_tar);
+	$ret .= "chown -R ec2-user:ec2-user /opt/slimstk\n";
+	$ret .= "su --command /opt/slimstk/boot --login ec2-user\n";
+
+	return ($ret);
+}
+
+function build_boot_tar () {
+	global $slimstk, $stkname, $stkinfo, $region;
+
+	$files = array ();
+	
+	$ret = array ();
+	$authorized_keys = "";
+	foreach ($stkinfo['admins'] as $user) {
+		$fname = sprintf ("sshkey-%s.pub", $user);
+		$src = sprintf ("%s/%s", $slimstk['confdir'], $fname);
+		if (! file_exists ($src)) {
+			printf ("%s is missing\n", $src);
+			exit (1);
+		}
+		$authorized_keys .= trim (file_get_contents ($src))."\n";
+
+		/*
+		 * put in $files not because a copy is needed there,
+		 * but to make sure the signature chanes if the admins 
+		 * change
+		 */
+		$fp = array ();
+		$fp['src'] = $src;
+		$fp['dst'] = $fname;
+		$files[] = $fp;
+	}
+	$ret['authorized_keys'] = $authorized_keys;
+
+	$ifiles = explode ("\n", file_get_contents ("INST-FILES"));
+	foreach ($ifiles as $fname) {
+		if (($ftime = trim ($fname)) == "")
+			continue;
+		$fp = array ();
+		$fp['src'] = $fname;
+		$fp['dst'] = $fname;
+		$files[] = $fp;
+	}
+
+	$fname = sprintf ("dbpass.%s.%s.%s.kms",
+			  $slimstk['aws_acct_name'],
+			  $stkinfo['database'],
+			  $region);
+	$fp = array ();
+	$fp['src'] = sprintf ("%s/%s", $slimstk['confdir'], $fname);
+	$fp['dst'] = $fname;
+	$files[] = $fp;
+
+	usort ($files,
+	       function ($a, $b) {
+		       return (strcmp ($a['src'], $b['src']));
+	       });
+	$manifest = "";
+	foreach ($files as $fp) {
+		$err = 0;
+		if (! file_exists ($fp['src'])) {
+			printf ("required file %s is missing\n",
+				$fp['src']);
+			$err = 1;
+		}
+		if ($err)
+			exit (1);
+		$manifest .= sprintf ("%s  %s\n",
+				      md5(file_get_contents ($fp['src'])),
+				      $fp['dst']);
+	}
+	$manifest_md5 = md5 ($manifest);
+	@unlink ("TMP.manifest");
+	file_put_contents ("TMP.manifest", $manifest);
+
+	$fp = array ();
+	$fp['src'] = "TMP.manifest";
+	$fp['dst'] = "MANIFEST";
+	$files[] = $fp;
+
+	$cmd = "tar --absolute-names -zcf TMP.tgz";
+	foreach ($files as $fp) {
+		if (strcmp ($fp['src'], $fp['dst']) != 0) {
+			$arg = sprintf ('s|^%s$|%s|', $fp['src'], $fp['dst']);
+			$cmd .= sprintf (" --transform %s",
+					 escapeshellarg ($arg));
+		}
+	}
+	foreach ($files as $fp) {
+		$cmd .= sprintf (" %s", escapeshellarg ($fp['src']));
+	}
+	printf ("%s\n", preg_replace ('/ /', "\n  ", $cmd));
+	system ($cmd);
+
+	$sig = substr ($manifest_md5, 0, 6);
+	$fname = sprintf ("boot.%s.%s.tgz", $stkname, $sig);
+
+	$fname = sprintf ("boot.%s.tgz", $stkname); /* debug override */
+
+	$dst = sprintf ("s3://%s/%s", $stkinfo['bucket'], $fname);
+	$cmd = sprintf ("aws s3 cp TMP.tgz %s", escapeshellarg ($dst));
+	printf ("%s\n", $cmd);
+	system ($cmd);
+
+	$ret['boot_s3'] = $dst;
+
+	global $initial_pkgs;
+	$ret['pkgs'] = $initial_pkgs;
+	return ($ret);
+}
+
+$boot = build_boot_tar ();
+$user_data = make_boot_script ($boot);
+
 if (strlen ($user_data) >= 16 * 1024) {
 	printf ("user_data too big\n");
 	exit (1);
@@ -80,20 +234,53 @@ function get_autoscaling_group () {
 	return (NULL);
 }
 
+$lconfigs = array ();
+$lconfigs_max_seq = 0;
+function get_launch_configurations () {
+	global $lconfigs, $stkname, $lconfigs_max_seq;
+
+	$max_seq = 0;
+
+	$args = array ("autoscaling", "describe-launch-configurations");
+	$val = slimstk_aws ($args);
+	foreach ($val['LaunchConfigurations'] as $lc) {
+		/* only pay attention to names like STKNAME_launch_### */
+		$name = $lc['LaunchConfigurationName'];
+		$arr = explode ('_', $name);
+		if (strcmp (@$arr[0], $stkname) != 0)
+			continue;
+		if (strcmp (@$arr[1], "launch") != 0)
+			continue;
+		$seq = intval (@$arr[2]);
+		if ($seq > $max_seq)
+			$max_seq = $seq;
+
+		$lconfigs[$name] = $lc;
+	}
+
+	$lconfigs_max_seq = $max_seq;
+}
 
 function lconfig_ok ($lconfig) {
 	global $sgext_groupid, $profile_name, $user_data, $keypair;
+	global $image_id, $instance_type;
 		
-	if (array_search ($sgext_groupid, $lconfig['SecurityGroups']) === FALSE)
+	if (strcmp (base64_decode ($lconfig['UserData']), $user_data) != 0)
 		return (0);
 
 	if (strcmp (@$lconfig['IamInstanceProfile'], $profile_name) != 0)
 		return (0);
 
-	if (strcmp (base64_decode ($lconfig['UserData']), $user_data) != 0)
+	if (strcmp (@$lconfig['KeyName'], @$keypair) != 0)
 		return (0);
 
-	if (strcmp (@$lconfig['KeyName'], @$keypair) != 0)
+	if (array_search ($sgext_groupid, $lconfig['SecurityGroups']) === FALSE)
+		return (0);
+
+	if (strcmp ($lconfig['ImageId'], $image_id) != 0)
+		return (0);
+
+	if (strcmp ($lconfig['InstanceType'], $instance_type) != 0)
 		return (0);
 
 	if (! @$lconfig['AssociatePublicIpAddress'])
@@ -115,98 +302,45 @@ function make_lconfig ($name) {
 
 	printf ("creating launch configuration %s...\n", $name);
 	$args = array ("autoscaling", "create-launch-configuration");
+	$args[] = "--user-data";
+	$args[] = $user_data;
+	$args[] = "--iam-instance-profile";
+	$args[] = $profile_name;
+	if (isset ($keypair)) {
+		$args[] = "--key-name";
+		$args[] = $keypair;
+	}
+	$args[] = "--security-groups";
+	$args[] = $sgext_groupid;
 	$args[] = "--launch-configuration-name";
 	$args[] = $name;
 	$args[] = "--image-id";
 	$args[] = $image_id;
 	$args[] = "--instance-type";
 	$args[] = $instance_type;
-	$args[] = "--security-groups";
-	$args[] = $sgext_groupid;
-	$args[] = "--iam-instance-profile";
-	$args[] = $profile_name;
-	$args[] = "--user-data";
-	$args[] = $user_data;
-	if (isset ($keypair)) {
-		$args[] = "--key-name";
-		$args[] = $keypair;
-	}
 	$args[] = "--associate-public-ip-address";
 	slimstk_aws ($args);
 }
 
 /* ================================================================ */
 
-$lcinfo = array ();
+get_launch_configurations ();
 
-for ($lcnum = 1; $lcnum <= 2; $lcnum++) {
-	$lcinfo[$lcnum] = array ();
-	$lcinfo[$lcnum]['name'] = sprintf ("%slaunch%d", $stkname, $lcnum);
-	$lcinfo[$lcnum]['has_data'] = 0;
-	$lcinfo[$lcnum]['valid'] = 0;
-}
-
-$args = array ("autoscaling", "describe-launch-configurations");
-$val = slimstk_aws ($args);
-foreach ($val['LaunchConfigurations'] as $lconfig) {
-	for ($lcnum = 1; $lcnum <= 2; $lcnum++) {
-		if (strcmp ($lconfig['LaunchConfigurationName'], 
-			    $lcinfo[$lcnum]['name']) == 0) {
-			$lcinfo[$lcnum]['has_data'] = 1;
-			if (lconfig_ok ($lconfig))
-				$lcinfo[$lcnum]['valid'] = 1;
-		}
-	}
-}
-
-$lc_old = 0;
-
+$make_new_lconfig = 1;
 if (($asg = get_autoscaling_group ()) != NULL) {
-	$lcname = $asg['LaunchConfigurationName'];
-	for ($lcnum = 1; $lcnum <= 2; $lcnum++) {
-		if (strcmp ($lcinfo[$lcnum]['name'], $lcname) == 0) {
-			$lc_old = $lcnum;
-			break;
-		}
+	$cur_lcname = $asg['LaunchConfigurationName'];
+	$lconfig = @$lconfigs[$cur_lcname];
+	if (lconfig_ok ($lconfig)) {
+		$make_new_lconfig = 0;
+		$use_lcname = $cur_lcname;
 	}
 }
 
-if ($lc_old == 0) {
-	/* nothing in use, so use slot 1, delete whatever may be in slot 2 */
-	$lc_new = 1;
-	$lc_old = 2;
-} else if ($lc_old == 1) {
-	if ($lcinfo[1]['valid']) {
-		$lc_new = 1;
-	} else {
-		$lc_new = 2;
-	}
-} else if ($lc_old == 2) {
-	if ($lcinfo[2]['valid']) {
-		$lc_new = 2;
-	} else {
-		$lc_new = 1;
-	}
+if ($make_new_lconfig) {
+	$use_lcname = sprintf ("%s_launch_%d", $stkname, $lconfigs_max_seq + 1);
+	make_lconfig ($use_lcname);
 }
 
-printf ("lc_old %d; lc_new %d\n", $lc_old, $lc_new);
-for ($lcnum = 1; $lcnum <= 2; $lcnum++) {
-	printf ("%d: %s has_data=%d valid=%d\n", 
-		$lcnum,
-		$lcinfo[$lcnum]['name'],
-		$lcinfo[$lcnum]['has_data'],
-		$lcinfo[$lcnum]['valid']);
-}
-
-if (! $lcinfo[$lc_new]['valid']) {
-	if ($lcinfo[$lc_new]['has_data'])
-		delete_lconfig ($lcinfo[$lc_new]['name']);
-
-	make_lconfig ($lcinfo[$lc_new]['name']);
-	$lcinfo[$lc_new]['has_data'] = 1;
-	$lcinfo[$lc_new]['valid'] = 1;
-}
-			
 if ($asg == NULL) {
 	printf ("creating autoscaling group\n");
 	$args = array ("autoscaling", "create-auto-scaling-group");
@@ -217,7 +351,7 @@ if ($asg == NULL) {
 	$args[] = "--max-size";
 	$args[] = 0;
 	$args[] = "--launch-configuration-name";
-	$args[] = $lcinfo[$lc_new]['name'];
+	$args[] = $use_lcname;
 	$args[] = "--load-balancer-names";
 	$args[] = $elb_name;
 	$args[] = "--vpc-zone-identifier";
@@ -240,7 +374,7 @@ if ($asg['MinSize'] != $min_size)
 if ($asg['MaxSize'] != $max_size)
 	$update_asg = 1;
 
-if (strcmp ($asg['LaunchConfigurationName'], $lcinfo[$lc_new]['name']) != 0)
+if (strcmp ($asg['LaunchConfigurationName'], $use_lcname) != 0)
 	$update_asg = 1;
 
 if ($update_asg) {
@@ -252,12 +386,12 @@ if ($update_asg) {
 	$args[] = "--max-size";
 	$args[] = $max_size;
 	$args[] = "--launch-configuration-name";
-	$args[] = $lcinfo[$lc_new]['name'];
+	$args[] = $use_lcname;
 	slimstk_aws ($args);
 }
 
-if ($lc_old != $lc_new && $lcinfo[$lc_old]['has_data']) {
-	delete_launch_configuration ($lcinfo[$lc_old]['name']);
-	$lcinfo[$lc_old]['has_data'] = 0;
-	$lcinfo[$lc_old]['valid'] = 0;
+foreach ($lconfigs as $lcname => $lconfig) {
+	if (strcmp ($lcname, $use_lcname) != 0) {
+		delete_launch_configuration ($lcname);
+	}
 }

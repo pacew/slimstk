@@ -1,0 +1,61 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/var/slimstk/slimstkcmd.php");
+slimstk_cmd_init ();
+
+$argv = $_SERVER['argv'];
+
+$stkname = trim (@$argv[1]);
+
+if ($stkname == "") {
+	printf ("usage: stack-create stackname\n");
+	exit (1);
+}
+
+if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
+	printf ("unknown stack %s for account %s\n",
+		$stkname, $slimstk['aws_acct_name']);
+	exit (1);
+}
+$region = $stkinfo['region'];
+slimstk_set_region ($region);
+
+$asg_name = sprintf ("%sasg", $stkname);
+
+function get_autoscaling_group () {
+	global $asg_name;
+
+	$args = array ("autoscaling", "describe-auto-scaling-groups");
+	$val = slimstk_aws ($args);
+	foreach ($val['AutoScalingGroups'] as $group) {
+		if ($group['AutoScalingGroupName'] == $asg_name) {
+			return ($group);
+		}
+	}
+	return (NULL);
+}
+
+if (($asg = get_autoscaling_group ()) == NULL) {
+	printf ("can't find autoscaling group\n");
+	exit (1);
+}
+
+$insts = array ();
+foreach ($asg['Instances'] as $inst) {
+	$insts[] = $inst['InstanceId'];
+}
+
+foreach ($insts as $inst) {
+	$args = array ("autoscaling", "set-instance-health");
+	$args[] = "--instance-id";
+	$args[] = $inst;
+	$args[] = "--health-status";
+	$args[] = "Unhealthy";
+	$args[] = "--no-should-respect-grace-period";
+	slimstk_aws ($args);
+}
+
+
+
+

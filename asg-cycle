@@ -9,7 +9,7 @@ $argv = $_SERVER['argv'];
 $stkname = trim (@$argv[1]);
 
 if ($stkname == "") {
-	printf ("usage: stack-create stackname\n");
+	printf ("usage: asg-on stackname\n");
 	exit (1);
 }
 
@@ -21,6 +21,7 @@ if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
 $region = $stkinfo['region'];
 slimstk_set_region ($region);
 
+$elb_name = sprintf ("%selb", $stkname);
 $asg_name = sprintf ("%sasg", $stkname);
 
 function get_autoscaling_group () {
@@ -36,26 +37,104 @@ function get_autoscaling_group () {
 	return (NULL);
 }
 
-if (($asg = get_autoscaling_group ()) == NULL) {
-	printf ("can't find autoscaling group\n");
+$asg = get_autoscaling_group ();
+$min_size = intval ($asg['MinSize']);
+$max_size = intval ($asg['MaxSize']);
+$desired_capacity = intval ($asg['DesiredCapacity']);
+$cur_lcname = $asg['LaunchConfigurationName'];
+
+$cur_lconfig = NULL;
+$args = array ("autoscaling", "describe-launch-configurations");
+$val = slimstk_aws ($args);
+foreach ($val['LaunchConfigurations'] as $lconfig) {
+	$lcname = $lconfig['LaunchConfigurationName'];
+	if (strcmp ($lcname, $cur_lcname) == 0) {
+		$cur_lconfig = $lconfig;
+		break;
+	}
+}
+
+if ($cur_lconfig == NULL) {
+	printf ("can't find current launch configuration %s\n",
+		$cur_lcname);
 	exit (1);
 }
 
+$cur_lctime = strtotime ($cur_lconfig['CreatedTime']);
+
 $insts = array ();
-foreach ($asg['Instances'] as $inst) {
-	$insts[] = $inst['InstanceId'];
+$args = array ("ec2", "describe-instances");
+$val = slimstk_aws ($args);
+foreach ($val['Reservations'] as $resv) {
+	foreach ($resv['Instances'] as $inst) {
+		$inst_id = $inst['InstanceId'];
+		$insts[$inst_id] = $inst;
+	}
 }
 
-foreach ($insts as $inst) {
-	$args = array ("autoscaling", "set-instance-health");
-	$args[] = "--instance-id";
-	$args[] = $inst;
-	$args[] = "--health-status";
-	$args[] = "Unhealthy";
-	$args[] = "--no-should-respect-grace-period";
+$stale_insts = array ();
+$good_insts = array ();
+$strange_insts = array ();
+foreach ($asg['Instances'] as $asg_inst) {
+	$inst_id = $asg_inst['InstanceId'];
+	if (($inst = @$insts[$inst_id]) == NULL) {
+		printf ("inst %s is in the asg but not in ec2 insts\n",
+			$inst_id);
+		exit (1);
+	}
+
+	$inst_time = strtotime ($inst['LaunchTime']);
+
+	if ($inst_time > $cur_lctime) {
+		if (strcasecmp($asg_inst['LifecycleState'], "InService") == 0
+		    && strcasecmp($asg_inst['HealthStatus'], "Healthy") == 0){
+			/* TODO make sure inst is all the way up */
+			$good_insts[] = $asg_inst;
+		} else {
+			$strange_insts[] = $asg_inst;
+		}
+	} else {
+		$stale_insts[] = $asg_inst;
+	}
+}
+
+if (count ($strange_insts) > 0) {
+	printf ("can't proceed while these insts are in strange states:\n");
+	printf ("%s\n", prettyprint_json ($strange_insts));
+	exit (1);
+}
+
+if (($victim = @$stale_insts[0]) == NULL) {
+	printf ("no stale insts\n");
+	exit (0);
+}	
+
+if (count ($good_insts) == 0) {
+	if ($desired_capacity >= $max_size) {
+		printf ("want to add a new inst, but desired >= max already\n");
+		exit (1);
+	}
+
+	$desired_capacity++;
+
+	printf ("all insts are stale ... increasing desired capcity\n");
+	system ("date");
+	$args = array ("autoscaling", "set-desired-capacity");
+	$args[] = "--auto-scaling-group-name";
+	$args[] = $asg_name;
+	$args[] = "--desired-capacity";
+	$args[] = $desired_capacity;
+	$args[] = "--no-honor-cooldown";
 	slimstk_aws ($args);
+	exit (0);
 }
 
+$inst_id = $victim['InstanceId'];
+printf ("terminating stale inst %s\n", $inst_id);
 
-
-
+$args = array ("autoscaling", "terminate-instance-in-auto-scaling-group");
+$args[] = "--instance-id";
+$args[] = $inst_id;
+$args[] = "--should-decrement-desired-capacity";
+$val = slimstk_aws ($args);
+printf ("%s\n", prettyprint_json ($val));
