@@ -31,6 +31,51 @@ if (! preg_match ('/# slimstk config/', file_get_contents ($httpd_conf))) {
 }
 system ("sudo service httpd start");
 
+function setup_dns () {
+	global $slimstk, $stkname, $stkinfo;
+
+	if (($server_domain = @$stkinfo['server_domain']) == "")
+		return;
+
+	$hosted_zone_id = slimstk_get_hosted_zone_id ($server_domain);
+	if ($hosted_zone_id == "") {
+		printf ("setup_dns: server_domain %s not found in route53\n",
+			$server_domain);
+		return;
+	}
+
+	$val = slimstk_get_aws_param ("/meta-data/placement/availability-zone");
+	$zone_letter = substr ($val, -1);
+
+	$public_ipv4 = slimstk_get_aws_param ("/meta-data/public-ipv4");
+
+	$abs_name = sprintf ("%s%s.%s.",
+			     $stkname, $zone_letter, $server_domain);
+
+	printf ("%s => %s\n", $abs_name, $public_ipv4);
+
+	$items = array ();
+	$items[] = array ("Action" => "UPSERT", 
+			  "ResourceRecordSet" => array (
+				  "Name" => $abs_name, 
+				  "Type" => "A", 
+				  "TTL" => 30, 
+				  "ResourceRecords" => array (
+					  array ("Value" => $public_ipv4)
+					  )
+				  )
+		);
+
+	$change_batch = array ("Changes" => $items);
+
+	$args = array ("route53", "change-resource-record-sets");
+	$args[] = "--hosted-zone-id";
+	$args[] = $hosted_zone_id;
+	$args[] = "--change-batch";
+	$args[] = json_encode ($change_batch);
+	slimstk_aws ($args);
+}
+
 function setup_db_access () {
 	global $slimstk, $stkname, $stkinfo;
 
