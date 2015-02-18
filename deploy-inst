@@ -1,0 +1,27 @@
+#! /bin/sh -xe
+
+# running in /opt/codedeploy-agent as ec2-user
+# nothing useful in args or environment
+# $0 is full path to this script in /opt/codedeploy-agent/deployment-root/...
+#
+# output from this script goes to a file like
+# /opt/codedeploy-agent/deployment-root/1c0.../d-8MW.../logs/scripts.log
+
+
+depdir=`dirname $0`
+
+date
+echo "deploy from $depdir"
+
+cd $depdir
+
+dname=`cat dname`
+
+destdir=/home/ec2-user/$dname
+mkdir -p $destdir
+
+tar -C $destdir -xf app.tar
+cp commit $destdir/website/.
+
+cd $destdir
+./install-site

@@ -836,6 +836,59 @@ function setup_codedeploy () {
 	}
 }
 
+function check_codedeploy () {
+	global $slimstk;
+
+	$regions = array ();
+	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+		$region = $stkinfo['region'];
+		$regions[$region] = 1;
+	}
+
+	foreach ($regions as $region => $dummy) {
+		slimstk_set_region ($region);
+
+		$args = array ("autoscaling", "describe-auto-scaling-groups");
+		$val = slimstk_aws ($args);
+		$asg_names = array ();
+		foreach ($val['AutoScalingGroups'] as $asg) {
+			$name = $asg['AutoScalingGroupName'];
+			/* only pay attention to our groups */
+			if (preg_match ('/(.*)asg$/', $name, $parts)) {
+				$asg_stkname = $parts[1];
+				if (isset ($slimstk['stacks'][$asg_stkname]))
+					$asg_names[] = $name;
+			
+			}
+		}
+		foreach ($asg_names as $asg_name) {
+			$args = array ("autoscaling",
+				       "describe-lifecycle-hooks");
+			$args[] = "--auto-scaling-group-name";
+			$args[] = $asg_name;
+			$val = slimstk_aws ($args);
+			$found = 0;
+			foreach ($val['LifecycleHooks'] as $hook) {
+				$hook_name = $hook['LifecycleHookName'];
+				if(preg_match('/CodeDeploy.*automatic-launch/i',
+					      $hook_name)) {
+					$found = 1;
+					break;
+				}
+			}
+			if (! $found) {
+				printf ("*** autoscaling group %s"
+					." is missing its codedeploy"
+					." lifecycle hook.\n",
+					$asg_name);
+				printf ("*** you probably need to delete"
+					." and recreate the codedeploy\n");
+				printf ("*** deployment group\n");
+			}
+		}
+	}
+}
+
 /* ================================================================ */
 setup_instance_profile ();
 
@@ -885,6 +938,8 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 foreach ($slimstk['stacks'] as $stkname => $dummy) {
 	setup_elb ($stkname);
 }
+
+check_codedeploy ();
 
 
 printf ("be sure to commit any modified files in %s\n", $slimstk['confdir']);

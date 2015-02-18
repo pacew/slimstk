@@ -1,6 +1,3 @@
-rm /opt/slimstk/* and make sure it gets rebuilt right
-
-
 don't display db password in setup-aws-acct
 
 reduce permissions for server role
@@ -12,3 +9,5 @@ deployment groups
 
 remove test-key-pair (or work out a better way - maybe stack creator's key)
 
+healthcheck uses /www/blank/index.html - change to index.php and check
+database connection

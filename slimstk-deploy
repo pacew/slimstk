@@ -1,0 +1,236 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/opt/slimstk/slimstkcmdext.php");
+slimstk_cmd_init ();
+
+$argv = $_SERVER['argv'];
+
+if (($for_siteid = @$argv[1]) == "") {
+	printf ("usage: ./deploy siteid\n");
+	exit (1);
+}
+
+if (! preg_match ('/^([^-]*)-(.*)$/', $siteid, $parts)) {
+	printf ("can't work out siteid of development directory\n");
+	exit (1);
+}
+
+$app_name = $parts[1];
+
+if (! preg_match ('/^([^-]*)-(.*)$/', $for_siteid, $parts)) {
+	printf ("invalid siteid\n");
+	exit (1);
+}
+
+$for_app_name = $parts[1];
+$for_conf_key = $parts[2];
+
+if (strcmp ($app_name, $for_app_name) != 0) {
+	printf ("can't deploy %s when you're in the directory for %s\n",
+		$for_siteid, $siteid);
+	exit (1);
+}
+
+$match = 0;
+foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	foreach ($stkinfo['sites'] as $siteid => $sinfo) {
+		if ($siteid == $for_siteid) {
+			$match = 1;
+			break;
+		}
+	}
+}
+
+if ($match == 0) {
+	printf ("unknown site: %s\n", $for_siteid);
+	exit (1);
+}
+
+if (($bucket = @$stkinfo['bucket']) == NULL) {
+	printf ("can't find bucket for stack\n");
+	exit (1);
+}
+
+$val = trim (shell_exec ("git status --porcelain"));
+if ($val != "") {
+	printf ("working directory is dirty ... can't deploy\n");
+	exit (1);
+}
+
+$commit = trim (shell_exec ("git rev-parse --short HEAD"));
+
+$t = trim (shell_exec ("git log --max-count=1 --pretty='%at' HEAD"));
+$timestamp = strftime ("%Y%m%dT%H%M%S", $t);
+
+$output_base = sprintf ("%s.%s", $for_siteid, $timestamp);
+$output_name = sprintf ("%s.%s.tgz", $output_base, $commit);
+
+$appspec = "version: 0.0\n";
+$appspec .= "os: linux\n";
+
+/*
+ * ApplicationStop
+ * BeforeInstall
+ * AfterInstall
+ * ApplicationStart
+ * ValidateService
+ */
+$appspec .= "hooks:\n"
+	."  ApplicationStart:\n"
+	."    - location: deploy-inst\n"
+	."      timeout: 30\n"
+	."      runas: ec2-user\n"
+	;
+
+
+$commit_msg = trim (shell_exec ("git log --max-count=1 HEAD"));
+$commit_desc = trim (shell_exec ("git log --date=iso"
+				 ." --pretty=format:'%h %ad %ae %s'"
+				 ." --max-count=1 HEAD"));
+printf ("commit_desc = '%s'\n", $commit_desc);
+
+
+$files = array ();
+$src = sprintf ("%s/deploy-inst", dirname ($_SERVER['argv'][0]));
+if (! file_exists ($src)) {
+	printf ("can't find deploy-inst file ... tried %s\n", $src);
+	exit (1);
+}
+$files[] = array ("src" => $src,
+		  "dst" => "deploy-inst");
+
+@unlink ("TMP.app.tar");
+system ("git archive --output TMP.app.tar HEAD");
+$files[] = array ("src" => "TMP.app.tar",
+		  "dst" => "app.tar");
+
+file_put_contents ("TMP.commit", $commit_msg);
+$files[] = array ("src" => "TMP.commit",
+		  "dst" => "commit");
+
+file_put_contents ("TMP.appspec", $appspec);
+$files[] = array ("src" => "TMP.appspec",
+		  "dst" => "appspec.yml");
+
+file_put_contents ("TMP.dname", $output_base . "\n");
+$files[] = array ("src" => "TMP.dname",
+		  "dst" => "dname");
+
+slimstk_mktar ("TMP.tgz", $files);
+
+$dest = sprintf ("s3://%s/%s", $bucket, $output_name);
+$cmd = sprintf ("aws s3 cp TMP.tgz %s", escapeshellarg ($dest));
+printf ("%s\n", $cmd);
+system ($cmd, $rc);
+if ($rc != 0) {
+	printf ("error running: %s\n", $cmd);
+	exit (1);
+}
+
+
+
+printf ("%s is ready\n", $output_name);
+printf ("*** proceed to deploy %s? ", $for_siteid);
+if (trim (slimstk_gets ()) != "y") {
+	printf ("aborted\n");
+	exit (1);
+}
+
+
+
+slimstk_set_region ($stkinfo['region']);
+
+$args = array ("deploy", "list-applications");
+$val = slimstk_aws ($args);
+
+$found = 0;
+foreach ($val['applications'] as $app) {
+	if (strcmp ($app, $app_name) == 0) {
+		$found = 1;
+		break;
+	}
+}
+
+if (! $found) {
+	$args = array ("deploy", "create-application");
+	$args[] = "--application-name";
+	$args[] = $app_name;
+	slimstk_aws ($args);
+}
+
+$args = array ("iam", "get-role");
+$args[] = "--role-name";
+$args[] = "codedeploy";
+$val = slimstk_aws ($args);
+$role_arn = $val['Role']['Arn'];
+
+$deployment_group_name = $for_conf_key;
+$elb_name = sprintf ("%selb", $stkname);
+$asg_name = sprintf ("%sasg", $stkname);
+
+$args = array ("deploy", "list-deployment-groups");
+$args[] = "--application-name";
+$args[] = $app_name;
+$val = slimstk_aws ($args);
+$found = 0;
+foreach ($val['deploymentGroups'] as $dname) {
+	if (strcmp ($dname, $deployment_group_name) == 0) {
+		$found = 1;
+		break;
+	}
+}
+	
+if ($found == 0) {
+	$args = array ("deploy", "create-deployment-group");
+	$args[] = "--application-name";
+	$args[] = $app_name;
+	$args[] = "--deployment-group-name";
+	$args[] = $deployment_group_name;
+	$args[] = "--deployment-config-name";
+	$args[] = "CodeDeployDefault.OneAtATime";
+	$args[] = "--auto-scaling-groups";
+	$args[] = $asg_name;
+	$args[] = "--service-role-arn";
+	$args[] = $role_arn;
+	$val = slimstk_aws ($args);
+}
+
+
+$args = array ("autoscaling", "describe-lifecycle-hooks");
+$args[] = "--auto-scaling-group-name";
+$args[] = $asg_name;
+$val = slimstk_aws ($args);
+$found = 0;
+foreach ($val['LifecycleHooks'] as $hook) {
+	$hook_name = $hook['LifecycleHookName'];
+	if(preg_match('/CodeDeploy.*automatic-launch/i',
+		      $hook_name)) {
+		$found = 1;
+		break;
+	}
+}
+if (! $found) {
+	printf ("*** autoscaling group %s"
+		." is missing its codedeploy"
+		." lifecycle hook.\n",
+		$asg_name);
+	printf ("*** you probably need to delete"
+		." and recreate the codedeploy\n");
+	printf ("*** deployment group\n");
+}
+
+$s3_location = array ("bucket" => $bucket,
+		      "key" => $output_name,
+		      "bundleType" => "tgz");
+
+$args = array ("deploy", "create-deployment");
+$args[] = "--application-name";
+$args[] = $app_name;
+$args[] = "--deployment-group-name";
+$args[] = $deployment_group_name;
+$args[] = "--description";
+$args[] = substr ($commit_desc, 0, 100); 
+$args[] = "--s3-location";
+$args[] = json_encode ($s3_location);
+$val = slimstk_aws ($args);

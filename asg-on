@@ -403,6 +403,29 @@ if (array_search ($elb_name, $asg['LoadBalancerNames']) === FALSE) {
 	exit (1);
 }
 
+$args = array ("autoscaling", "describe-lifecycle-hooks");
+$args[] = "--auto-scaling-group-name";
+$args[] = $asg_name;
+$val = slimstk_aws ($args);
+$found = 0;
+foreach ($val['LifecycleHooks'] as $hook) {
+	$hook_name = $hook['LifecycleHookName'];
+	if(preg_match('/CodeDeploy.*automatic-launch/i',
+		      $hook_name)) {
+		$found = 1;
+		break;
+	}
+}
+if (! $found) {
+	printf ("*** autoscaling group %s"
+		." is missing its codedeploy"
+		." lifecycle hook.\n",
+		$asg_name);
+	printf ("*** you probably need to delete"
+		." and recreate the codedeploy\n");
+	printf ("*** deployment group\n");
+}
+
 $update_asg = 0;
 
 if ($asg['MinSize'] != $min_size)
