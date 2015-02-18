@@ -1,4 +1,3 @@
-kill-stale-insts
 kms-decrypt
 httpd-extra.conf
 slimstk.php
@@ -6,3 +5,4 @@ slimstkcmd.php
 slimstkext.php
 slimstkcmdext.php
 boot
+asg-cycle

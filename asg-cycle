@@ -112,7 +112,7 @@ print_inst_ids ("strange:", $strange_insts);
 
 if (count ($strange_insts) > 0) {
 	printf ("can't proceed while these insts are in strange states:\n");
-	printf ("%s\n", prettyprint_json ($strange_insts));
+	printf ("%s\n", json_encode ($strange_insts));
 	exit (1);
 }
 
@@ -145,4 +145,4 @@ $args[] = "--instance-id";
 $args[] = $inst_id;
 $args[] = "--should-decrement-desired-capacity";
 $val = slimstk_aws ($args);
-printf ("%s\n", prettyprint_json ($val));
+printf ("%s\n", json_encode ($val));
