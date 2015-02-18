@@ -340,7 +340,7 @@ function clrsess () {
 	}
 }
 
-function getseq () {
+function get_seq () {
 	$q = query ("select lastval"
 		    ." from seq"
 		    ." limit 1");

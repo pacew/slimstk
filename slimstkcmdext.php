@@ -105,7 +105,7 @@ function find_ssl_files ($name) {
 	return (NULL);
 }
 
-function make_virtual_host ($args) {
+function make_virtual_host ($args, $config) {
 	global $slimstk;
 
 	$ret = "";
@@ -127,7 +127,7 @@ function make_virtual_host ($args) {
 	$ret .= sprintf ("  ServerName %s\n", $with_www);
 	$ret .= sprintf ("  ServerAlias %s\n", $without_www);
 
-	$ret .= sprintf ("  DocumentRoot %s\n", getcwd() . "/website");
+	$ret .= sprintf ("  DocumentRoot %s\n", $config['site_root']);
 	$ret .= sprintf ("  FileETag none\n");
 
 	if ($slimstk['systype'] == "ubuntu")
@@ -207,6 +207,7 @@ function slimstk_apache_config ($global_args) {
 	$config['siteid'] = $slimstk['siteid'];
 	$config['site_name'] = $slimstk['app_name'];
 	$config['conf_key'] = $slimstk['conf_key'];
+	$config['site_root'] = getcwd() . "/website";
 
 	if ($slimstk['systype'] == "amazon") {
 		$config['devel_mode'] = 0;
@@ -280,7 +281,7 @@ function slimstk_apache_config ($global_args) {
 	$args->name = $config['url_name'];
 	$args->port = $config['site_port'];
 	$args->ssl_flag = 0;
-	$apache_conf .= make_virtual_host ($args);
+	$apache_conf .= make_virtual_host ($args, $config);
 
 	if (isset ($config['ssl_port'])) {
 		$args = (object)NULL;
@@ -290,7 +291,7 @@ function slimstk_apache_config ($global_args) {
 		$args->ssl_files = $ssl_files;
 		$args->require_client_cert
 			= @$global_args['require_client_cert'];
-		$apache_conf .= make_virtual_host ($args);
+		$apache_conf .= make_virtual_host ($args, $config);
 	}
 
 	@unlink ("TMP.conf");
