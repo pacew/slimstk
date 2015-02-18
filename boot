@@ -15,10 +15,6 @@ slimstk_cmd_init ();
 /* put some useful stuff in the log */
 printf ("slimstk php boot script\n");
 system ("date");
-system ("id");
-system ("pwd");
-system ("echo umask `umask`");
-system ("env");
 
 chmod ($_SERVER['HOME'], 0755);
 
