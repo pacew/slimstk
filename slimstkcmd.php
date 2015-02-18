@@ -235,7 +235,6 @@ function slimstk_get_hosted_zone_id ($name) {
 function slimstk_mktar ($output, $files) {
 	$cmd = sprintf ("tar --absolute-names -zcf %s",
 			escapeshellarg ($output));
-	$extra = 0;
 	foreach ($files as $fp) {
 		if (strcmp ($fp['src'], $fp['dst']) != 0) {
 			$trans = sprintf ('s|^%s$|%s|',

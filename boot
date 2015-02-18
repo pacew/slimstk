@@ -52,7 +52,7 @@ function setup_dns () {
 	$abs_name = sprintf ("%s%s.%s.",
 			     $stkname, $zone_letter, $server_domain);
 
-	printf ("%s => %s\n", $abs_name, $public_ipv4);
+	printf ("setup_dns %s => %s\n", $abs_name, $public_ipv4);
 
 	$items = array ();
 	$items[] = array ("Action" => "UPSERT", 
@@ -73,7 +73,28 @@ function setup_dns () {
 	$args[] = $hosted_zone_id;
 	$args[] = "--change-batch";
 	$args[] = json_encode ($change_batch);
-	slimstk_aws ($args);
+	$val = slimstk_aws ($args);
+	printf ("%s\n", json_encode ($val));
+}
+
+function decrypt_files () {
+	global $stkinfo;
+	$desired_suffix = sprintf (".%s.kms", $stkinfo['region']);
+	$suffix_len = strlen ($desired_suffix);
+
+	$dir = opendir ("/opt/slimstk");
+	while (($fname = readdir ($dir)) != NULL) {
+		$suffix = substr ($fname, - $suffix_len);
+		if (strcmp ($suffix, $desired_suffix) != 0)
+			continue;
+		$kms_name = sprintf ("/opt/slimstk/%s", $fname);
+		$clear_name = sprintf ("/opt/slimstk/%s",
+				       substr ($fname, 0, - $suffix_len));
+
+		printf ("decrypting %s\n", $kms_name);
+		$cleartext = slimstk_kms_decrypt ($kms_name);
+		file_put_contents ($clear_name, $cleartext);
+	}
 }
 
 function setup_db_access () {
@@ -81,20 +102,13 @@ function setup_db_access () {
 
 	$database = $stkinfo['database'];
 
-	$db_passwd_base = sprintf ("dbpass.%s.%s",
-				   $slimstk['aws_acct_name'], $database);
+	$dbpass_file = sprintf ("/opt/slimstk/dbpass.%s.%s",
+				$slimstk['aws_acct_name'], $database);
 
-	$kms_name = sprintf ("/opt/slimstk/%s.%s.kms",
-			     $db_passwd_base, $stkinfo['region']);
-	if (! file_exists ($kms_name)) {
-		printf ("%s is missing\n", $kms_name);
-		return;
-	}
-
-	$db_passwd = trim (slimstk_kms_decrypt ($kms_name));
+	$db_passwd = trim (@file_get_contents ($dbpass_file));
 
 	if ($db_passwd == NULL) {
-		printf ("can't decrypt %s\n", $kms_name);
+		printf ("can't find db password in %s\n", $dbpass_file);
 		return;
 	}
 
@@ -122,7 +136,9 @@ function setup_db_access () {
 
 slimstk_set_region ($stkinfo['region']);
 
+decrypt_files ();
 setup_db_access ();
+setup_dns ();
 
 $src = sprintf ("s3://aws-codedeploy-%s/latest/install", $stkinfo['region']);
 $dst = "/tmp/codedeploy-install";

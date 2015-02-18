@@ -56,7 +56,7 @@ $instance_type = "t2.small";
 
 $keypair = "test-key-pair";
 
-$initial_pkgs = array (
+$base_pkgs = array (
 	"mysql",
 	"mysql-server",
 	"mysql-libs",
@@ -71,8 +71,6 @@ $initial_pkgs = array (
 	);
 
 function make_boot_script ($boot) {
-	global $stkname;
-
 	/*
 	 * run as root in the root directory, no arguments
 	 * environment is pretty bare - here is interesting stuff:
@@ -128,64 +126,58 @@ function make_boot_script ($boot) {
 function build_boot_tar () {
 	global $slimstk, $stkname, $stkinfo, $region;
 
-	$files = array ();
-	
 	$ret = array ();
+	
 	$authorized_keys = "";
 	foreach ($stkinfo['admins'] as $user) {
-		$fname = sprintf ("sshkey-%s.pub", $user);
-		$src = sprintf ("%s/%s", $slimstk['confdir'], $fname);
+		$src = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $user);
 		if (! file_exists ($src)) {
 			printf ("%s is missing\n", $src);
 			exit (1);
 		}
 		$authorized_keys .= trim (file_get_contents ($src))."\n";
-
-		/*
-		 * put in $files not because a copy is needed there,
-		 * but to make sure the signature chanes if the admins 
-		 * change
-		 */
-		$fp = array ();
-		$fp['src'] = $src;
-		$fp['dst'] = $fname;
-		$files[] = $fp;
 	}
 	$ret['authorized_keys'] = $authorized_keys;
 
-	$fname = sprintf ("dbpass.%s.%s.%s.kms",
-			  $slimstk['aws_acct_name'],
-			  $stkinfo['database'],
-			  $region);
-	$fp = array ();
-	$fp['src'] = sprintf ("%s/%s", $slimstk['confdir'], $fname);
-	$fp['dst'] = $fname;
-	$files[] = $fp;
-
-	$fp = array ();
-	$fp['src'] = sprintf ("%s/stacks.json", $slimstk['confdir']);
-	$fp['dst'] = "stacks.json";
-	$files[] = $fp;
-
-	$fp = array ();
-	$fp['src'] = sprintf ("%s/vars.json", $slimstk['confdir']);
-	$fp['dst'] = "vars.json";
-	$files[] = $fp;
+	$files = array ();
 
 	file_put_contents ("TMP.stkname", $stkname . "\n");
-	$fp = array ();
-	$fp['src'] = "TMP.stkname";
-	$fp['dst'] = "stkname";
-	$files[] = $fp;
+	$files[] = array ('src' => "TMP.stkname",
+			  'dst' => "stkname");
+
+	$src = sprintf ("%s/dbpass.%s.%s.%s.kms",
+			$slimstk['confdir'],
+			$slimstk['aws_acct_name'],
+			$stkinfo['database'],
+			$region);
+	$files[] = array ('src' => $src,
+			  'dst' => basename ($src));
+
+	$src = sprintf ("%s/stacks.json", $slimstk['confdir']);
+	$files[] = array ('src' => $src,
+			  'dst' => basename ($src));
+
+	$src = sprintf ("%s/vars.json", $slimstk['confdir']);
+	$files[] = array ('src' => $src,
+			  'dst' => basename ($src));
+
+	foreach ($slimstk['files'] as $fname) {
+		$src = sprintf ("%s/%s", $slimstk['confdir'], $fname);
+		if (! file_exists ($src)) {
+			$kms_src = sprintf ("%s.%s.kms", $src, $region);
+			if (file_exists ($kms_src))
+				$src = $kms_src;
+		}
+		$files[] = array ('src' => $src,
+				  'dst' => basename ($src));
+	}
 
 	$ifiles = explode ("\n", file_get_contents ("INST-FILES"));
-	foreach ($ifiles as $fname) {
-		if (($ftime = trim ($fname)) == "")
+	foreach ($ifiles as $src) {
+		if (($src = trim ($src)) == "")
 			continue;
-		$fp = array ();
-		$fp['src'] = $fname;
-		$fp['dst'] = $fname;
-		$files[] = $fp;
+		$files[] = array ('src' => $src,
+				  'dst' => basename ($src));
 	}
 
 	usort ($files,
@@ -200,47 +192,32 @@ function build_boot_tar () {
 				$fp['src']);
 			$err = 1;
 		}
-		if ($err)
+		if ($err) {
+			printf ("check %s/stacks.json and ./INST-FILES\n",
+				$slimstk['confdir']);
 			exit (1);
+		}
 		$manifest .= sprintf ("%s  %s\n",
 				      md5(file_get_contents ($fp['src'])),
 				      $fp['dst']);
 	}
+
+	slimstk_mktar ("TMP.tgz", $files);
+	
 	$manifest_md5 = md5 ($manifest);
-	@unlink ("TMP.manifest");
-	file_put_contents ("TMP.manifest", $manifest);
-
-	$fp = array ();
-	$fp['src'] = "TMP.manifest";
-	$fp['dst'] = "manifest";
-	$files[] = $fp;
-
-	$cmd = "tar --absolute-names -zcf TMP.tgz";
-	foreach ($files as $fp) {
-		if (strcmp ($fp['src'], $fp['dst']) != 0) {
-			$arg = sprintf ('s|^%s$|%s|', $fp['src'], $fp['dst']);
-			$cmd .= sprintf (" --transform %s",
-					 escapeshellarg ($arg));
-		}
-	}
-	foreach ($files as $fp) {
-		$cmd .= sprintf (" %s", escapeshellarg ($fp['src']));
-	}
-	printf ("%s\n", preg_replace ('/ /', "\n  ", $cmd));
-	system ($cmd);
-
 	$sig = substr ($manifest_md5, 0, 6);
-	$fname = sprintf ("boot.%s.%s.tgz", $stkname, $sig);
+	$tarname = sprintf ("boot.%s.%s.tgz", $stkname, $sig);
 
-	$dst = sprintf ("s3://%s/%s", $stkinfo['bucket'], $fname);
-	$cmd = sprintf ("aws s3 cp TMP.tgz %s", escapeshellarg ($dst));
+	$boot_s3 = sprintf ("s3://%s/%s", $stkinfo['bucket'], $tarname);
+	$cmd = sprintf ("aws s3 cp TMP.tgz %s", escapeshellarg ($boot_s3));
 	printf ("%s\n", $cmd);
 	system ($cmd);
 
-	$ret['boot_s3'] = $dst;
+	$ret['boot_s3'] = $boot_s3;
 
-	global $initial_pkgs;
-	$ret['pkgs'] = $initial_pkgs;
+	global $base_pkgs;
+	$ret['pkgs'] = $base_pkgs;
+
 	return ($ret);
 }
 
@@ -249,7 +226,11 @@ $user_data = make_boot_script ($boot);
 
 file_put_contents ("TMP.userdata", $user_data);
 
-if (strlen ($user_data) >= 16 * 1024) {
+$userdata_limit = 16 * 1024;
+printf ("userdata is %d bytes of %d allowed\n",
+	strlen ($user_data), $userdata_limit);
+
+if (strlen ($user_data) >= $userdata_limit) {
 	printf ("user_data too big\n");
 	exit (1);
 }
@@ -455,3 +436,7 @@ foreach ($lconfigs as $lcname => $lconfig) {
 		delete_launch_configuration ($lcname);
 	}
 }
+
+printf ("you probably want to run:\n");
+printf ("asg-cycle %s\n", $stkname);
+
