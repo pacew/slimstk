@@ -25,3 +25,5 @@ cp commit $destdir/website/.
 
 cd $destdir
 ./install-site
+
+sh $depdir/tagcmd

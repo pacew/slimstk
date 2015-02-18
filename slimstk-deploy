@@ -1,22 +1,37 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-require_once ("/opt/slimstk/slimstkcmdext.php");
+require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_init ();
 
+function usage () {
+	printf ("usage: slimstk deploy siteid\n");
+	exit (1);
+}
+
+$argc = $_SERVER['argc'];
 $argv = $_SERVER['argv'];
 
-if (($for_siteid = @$argv[1]) == "") {
-	printf ("usage: ./deploy siteid\n");
-	exit (1);
+$G_flag = 0;
+
+while (($c = cgetopt ($argc, $argv, "G")) != FALSE) {
+	switch ($c) {
+	case "G":
+		$G_flag = 1;
+		break;
+	default:
+		usage ();
+		break;
+	}
 }
 
-if (! preg_match ('/^([^-]*)-(.*)$/', $siteid, $parts)) {
-	printf ("can't work out siteid of development directory\n");
-	exit (1);
-}
+if ($optind >= $argc)
+	usage ();
 
-$app_name = $parts[1];
+$for_siteid = $argv[$optind++];
+
+if ($optind != $argc)
+	usage ();
 
 if (! preg_match ('/^([^-]*)-(.*)$/', $for_siteid, $parts)) {
 	printf ("invalid siteid\n");
@@ -25,12 +40,6 @@ if (! preg_match ('/^([^-]*)-(.*)$/', $for_siteid, $parts)) {
 
 $for_app_name = $parts[1];
 $for_conf_key = $parts[2];
-
-if (strcmp ($app_name, $for_app_name) != 0) {
-	printf ("can't deploy %s when you're in the directory for %s\n",
-		$for_siteid, $siteid);
-	exit (1);
-}
 
 $match = 0;
 foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
@@ -47,6 +56,52 @@ if ($match == 0) {
 	exit (1);
 }
 
+slimstk_set_region ($stkinfo['region']);
+
+$asg_name = sprintf ("%sasg", $stkname);
+
+$commit_tag_key = sprintf ("%s.commit", $for_siteid);
+
+if (! $G_flag) {
+	$args = array ("autoscaling", "describe-tags");
+	$val = slimstk_aws ($args);
+	$last_commit = NULL;
+	foreach ($val['Tags'] as $tag) {
+		if (strcmp ($tag['ResourceId'], $asg_name) == 0
+		    && strcmp ($tag['Key'], $commit_tag_key) == 0) {
+			$last_commit = trim ($tag['Value']);
+			break;
+		}
+	}
+
+	if ($last_commit) {
+		$revs = explode ("\n", shell_exec ("git rev-list HEAD"));
+		$found = 0;
+		foreach ($revs as $rev) {
+			$rev = trim ($rev);
+			if (strcmp ($rev, $last_commit) == 0) {
+				$found = 1;
+			}
+		}
+		if (! $found) {
+			printf ("\n");
+			printf ("*** ERROR: The commit you are trying"
+				." to deploy is not a descendant of\n"
+				."the commit last deployed - %s\n"
+				." If you really want to do this, run:\n"
+				."   slimstk deploy -G SITEID\n",
+				$last_commit);
+			if (strpos (getcwd (), $for_app_name) === FALSE) {
+				printf ("*** also note that your working"
+					." directory is %s\n"
+					." which is unusual for deploying %s\n",
+					getcwd (), $for_siteid);
+			}
+			exit (1);
+		}
+	}
+}
+
 if (($bucket = @$stkinfo['bucket']) == NULL) {
 	printf ("can't find bucket for stack\n");
 	exit (1);
@@ -58,25 +113,18 @@ if ($val != "") {
 	exit (1);
 }
 
-$commit = trim (shell_exec ("git rev-parse --short HEAD"));
+$commit_full = trim (shell_exec ("git rev-parse HEAD"));
+$commit_short = trim (shell_exec ("git rev-parse --short HEAD"));
 
 $t = trim (shell_exec ("git log --max-count=1 --pretty='%at' HEAD"));
 $timestamp = strftime ("%Y%m%dT%H%M%S", $t);
 
 $output_base = sprintf ("%s.%s", $for_siteid, $timestamp);
-$output_name = sprintf ("%s.%s.tgz", $output_base, $commit);
+$output_name = sprintf ("%s.%s.tgz", $output_base, $commit_short);
 
-$appspec = "version: 0.0\n";
-$appspec .= "os: linux\n";
-
-/*
- * ApplicationStop
- * BeforeInstall
- * AfterInstall
- * ApplicationStart
- * ValidateService
- */
-$appspec .= "hooks:\n"
+$appspec = "version: 0.0\n"
+	."os: linux\n"
+	."hooks:\n"
 	."  ApplicationStart:\n"
 	."    - location: deploy-inst\n"
 	."      timeout: 30\n"
@@ -90,6 +138,17 @@ $commit_desc = trim (shell_exec ("git log --date=iso"
 				 ." --max-count=1 HEAD"));
 printf ("commit_desc = '%s'\n", $commit_desc);
 
+$tags = array ("ResourceId" => $asg_name,
+	       "ResourceType" => "auto-scaling-group",
+	       "Key" => $commit_tag_key,
+	       "Value" => $commit_full,
+	       "PropagateAtLaunch" => false);
+$commit_tag_cmd = sprintf ("aws --region %s"
+			   ."  autoscaling create-or-update-tags"
+			   ."  --tags %s\n",
+			   escapeshellarg ($stkinfo['region']),
+			   escapeshellarg (json_encode ($tags)));
+file_put_contents ("TMP.tagcmd", $commit_tag_cmd);
 
 $files = array ();
 $src = sprintf ("%s/deploy-inst", dirname ($_SERVER['argv'][0]));
@@ -99,6 +158,9 @@ if (! file_exists ($src)) {
 }
 $files[] = array ("src" => $src,
 		  "dst" => "deploy-inst");
+
+$files[] = array ("src" => "TMP.tagcmd",
+		  "dst" => "tagcmd");
 
 @unlink ("TMP.app.tar");
 system ("git archive --output TMP.app.tar HEAD");
@@ -139,14 +201,12 @@ if (trim (slimstk_gets ()) != "y") {
 
 
 
-slimstk_set_region ($stkinfo['region']);
-
 $args = array ("deploy", "list-applications");
 $val = slimstk_aws ($args);
 
 $found = 0;
 foreach ($val['applications'] as $app) {
-	if (strcmp ($app, $app_name) == 0) {
+	if (strcmp ($app, $for_app_name) == 0) {
 		$found = 1;
 		break;
 	}
@@ -155,7 +215,7 @@ foreach ($val['applications'] as $app) {
 if (! $found) {
 	$args = array ("deploy", "create-application");
 	$args[] = "--application-name";
-	$args[] = $app_name;
+	$args[] = $for_app_name;
 	slimstk_aws ($args);
 }
 
@@ -166,12 +226,10 @@ $val = slimstk_aws ($args);
 $role_arn = $val['Role']['Arn'];
 
 $deployment_group_name = $for_conf_key;
-$elb_name = sprintf ("%selb", $stkname);
-$asg_name = sprintf ("%sasg", $stkname);
 
 $args = array ("deploy", "list-deployment-groups");
 $args[] = "--application-name";
-$args[] = $app_name;
+$args[] = $for_app_name;
 $val = slimstk_aws ($args);
 $found = 0;
 foreach ($val['deploymentGroups'] as $dname) {
@@ -184,7 +242,7 @@ foreach ($val['deploymentGroups'] as $dname) {
 if ($found == 0) {
 	$args = array ("deploy", "create-deployment-group");
 	$args[] = "--application-name";
-	$args[] = $app_name;
+	$args[] = $for_app_name;
 	$args[] = "--deployment-group-name";
 	$args[] = $deployment_group_name;
 	$args[] = "--deployment-config-name";
@@ -226,7 +284,7 @@ $s3_location = array ("bucket" => $bucket,
 
 $args = array ("deploy", "create-deployment");
 $args[] = "--application-name";
-$args[] = $app_name;
+$args[] = $for_app_name;
 $args[] = "--deployment-group-name";
 $args[] = $deployment_group_name;
 $args[] = "--description";

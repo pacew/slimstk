@@ -246,3 +246,52 @@ function slimstk_mktar ($output, $files) {
 	printf ("%s\n", preg_replace ('/ /', "\n  ", $cmd));
 	system ($cmd);
 }
+
+function cgetopt ($argc, $argv, $opts) {
+	global $optind, $optarg;
+	global $opt_nextchar;
+
+	if (! isset ($optind)) {
+		$optind = 1;
+		$opt_nextchar = 1;
+	}
+
+	$optarg = "";
+	while ($optind < $argc) {
+		if ($argv[$optind][0] != "-")
+			break;
+		
+		if ($argv[$optind] == "--") {
+			$optind++;
+			break;
+		}
+
+		$cur = $argv[$optind];
+		$len = strlen ($cur);
+
+		if ($opt_nextchar >= $len) {
+			$optind++;
+			$opt_nextchar = 1;
+			continue;
+		}
+	
+		$c = $cur[$opt_nextchar++];
+
+		if (($optinfo = strstr ($opts, $c)) == NULL) {
+			$c = "?";
+		} else if (@$optinfo[1] == ":") {
+			if ($opt_nextchar < $len) {
+				$optarg = substr ($cur, $opt_nextchar);
+			} else {
+				$optind++;
+				$optarg = $argv[$optind];
+			}
+			$optind++;
+			$opt_nextchar = 1;
+		}
+		
+		return ($c);
+	}
+
+	return (FALSE);
+}
