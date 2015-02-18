@@ -2,7 +2,7 @@
 <?php /* -*- mode:php -*- */
 
 require_once ("/opt/slimstk/slimstkcmdext.php");
-slimstk_cmd_init ();
+slimstk_init ();
 
 $argv = $_SERVER['argv'];
 

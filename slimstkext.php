@@ -1,5 +1,7 @@
 <?php
 
+$slimstk_ext_flag = 1;
+
 require_once ("slimstk.php");
 
 function slimstk_init_extended () {

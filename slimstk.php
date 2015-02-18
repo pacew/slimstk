@@ -10,14 +10,16 @@ $slimstk = NULL;
 /* to find safe port: sysctl net.ipv4.ip_local_port_range */
 $alternative_ssh_port = 61953; /* random choice */
 
-/* we're serving a web page */
-function slimstk_webpage_init () {
-	slimstk_init_common (1);
-	slimstk_session ();
+function slimstk_init () {
+	global $slimstk_ext_flag;
+
+	slimstk_init_common ();
+	if (@$slimstk_ext_flag)
+		slimstk_init_extended ();
 }
 
-function slimstk_init_common ($for_webpage) {
-	global $slimstk;
+function slimstk_init_common () {
+	global $slimstk, $slimstk_cmd_flag;
 
 	if (isset ($_SERVER['confdir'])) {
 		$confdir = $_SERVER['confdir'];
@@ -39,7 +41,12 @@ function slimstk_init_common ($for_webpage) {
 		exit (1);
 	}
 	$slimstk['confdir'] = $confdir;
-	$slimstk['for_webpage'] = $for_webpage;
+
+	if ($slimstk_cmd_flag) {
+		$slimstk['for_webpage'] = 0;
+	} else {
+		$slimstk['for_webpage'] = 1;
+	}
 
 	$vars_file = sprintf ("%s/vars.json", $confdir);
 	if (file_exists ($vars_file)) {

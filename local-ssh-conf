@@ -2,7 +2,7 @@
 <?php /* -*- mode:php -*- */
 
 require_once ("/opt/slimstk/slimstkcmd.php");
-slimstk_cmd_init ();
+slimstk_init ();
 
 $config_file = sprintf ("%s/.ssh/config", $_SERVER['HOME']);
 $f = fopen ($config_file, "r");

@@ -1,5 +1,8 @@
 <?php
 
+$slimstk_cmd_flag = 1;
+$slimstk_ext_flag = 1;
+
 require_once ("/opt/slimstk/slimstk.php");
 require_once ("/opt/slimstk/slimstkext.php");
 require_once ("/opt/slimstk/slimstkcmd.php");

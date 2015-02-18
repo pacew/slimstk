@@ -1,11 +1,8 @@
 <?php
 
-require_once ("/opt/slimstk/slimstk.php");
+$slimstk_cmd_flag = 1;
 
-function slimstk_cmd_init () {
-	slimstk_bail_out_on_error ();
-	slimstk_init_common (0);
-}
+require_once ("/opt/slimstk/slimstk.php");
 
 function slimstk_set_region ($region) {
 	global $slimstk;

@@ -2,7 +2,7 @@
 <?php /* -*- mode:php -*- */
 
 require_once ("/opt/slimstk/slimstkcmd.php");
-slimstk_cmd_init ();
+slimstk_init ();
 
 $db_done = array ();
 foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
