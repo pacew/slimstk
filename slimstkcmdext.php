@@ -285,7 +285,8 @@ function slimstk_apache_config ($global_args) {
 		$args->port = $config['ssl_port'];
 		$args->ssl_flag = 1;
 		$args->ssl_files = $ssl_files;
-		$args->require_client_cert = $global_args['require_client_cert'];
+		$args->require_client_cert
+			= @$global_args['require_client_cert'];
 		$apache_conf .= make_virtual_host ($args);
 	}
 

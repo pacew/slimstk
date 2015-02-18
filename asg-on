@@ -389,6 +389,10 @@ if ($asg == NULL) {
 	$args[] = $elb_name;
 	$args[] = "--vpc-zone-identifier";
 	$args[] = implode (",", $subnet_ids);
+	$args[] = "--health-check-type";
+	$args[] = "ELB";
+	$args[] = "--health-check-grace-period";
+	$args[] = "90";
 	slimstk_aws ($args);
 	$asg = get_autoscaling_group ();
 }

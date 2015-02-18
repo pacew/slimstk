@@ -337,6 +337,7 @@ function clrsess () {
 		unset ($_SESSION[$key]);
 	}
 }
+
 function getseq () {
 	$q = query ("select lastval"
 		    ." from seq"
