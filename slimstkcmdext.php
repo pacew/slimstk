@@ -249,6 +249,7 @@ function slimstk_apache_config ($global_args) {
 		if (! isset ($config['ssl_port']))
 			$config['ssl_port'] = slimstk_alloc_port ();
 
+		$config['url_name_ssl'] = $config['url_name'];
 		$config['ssl_url'] = make_url ($config['url_name'],
 					       $config['ssl_port'], 1);
 	} else {
