@@ -29,6 +29,7 @@ function slimstk_init_extended () {
 	$slimstk['siteid'] = $siteid;
 	$slimstk['app_name'] = $parts[1];
 	$slimstk['conf_key'] = $parts[2];
+	$slimstk['tmpdir'] = sprintf ("/var/%s", $siteid);
 
 	$issue = file_get_contents ("/etc/issue");
 	if (preg_match ('/Ubuntu 14/', $issue)) {
@@ -215,6 +216,7 @@ function query_db ($db, $stmt, $arr = NULL) {
 		$q->q = $db->pdo->prepare ($stmt);
 		if (! $q->q->execute ($arr))
 			ckerr_mysql ($q, $stmt);
+		$q->row_count = $q->q->rowCount ();
 	}
 
 	if ($op == "commit")
