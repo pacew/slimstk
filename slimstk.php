@@ -49,12 +49,8 @@ function slimstk_init_common () {
 	}
 
 	$vars_file = sprintf ("%s/vars.json", $confdir);
-	if (file_exists ($vars_file)) {
-		$slimstk['vars_file'] = $vars_file;
-		$slimstk['vars'] = @json_decode (
-			file_get_contents($vars_file),
-			true);
-	}
+	$slimstk['vars_file'] = $vars_file;
+	$slimstk['vars'] = @json_decode (file_get_contents($vars_file), true);
 
 	if (preg_match ('/Amazon.*AMI/',
 			@file_get_contents ("/etc/system-release"))) {

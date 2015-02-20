@@ -268,13 +268,12 @@ function setup_db ($stkinfo, $database) {
 		$subnet_group_name = "db_subnet_group";
 		
 		$val = slimstk_aws (array ("rds", "describe-db-subnet-groups"));
+
 		$match = 0;
 		foreach ($val['DBSubnetGroups'] as $group) {
 			if (strcmp ($group['DBSubnetGroupName'],
 				    $subnet_group_name) == 0) {
 				$match = 1;
-
-
 				if (strcmp ($group['VpcId'], $vpc_id) != 0) {
 					printf ("bad vpc_id for %s: ",
 						$subnet_group_name);
@@ -289,18 +288,20 @@ function setup_db ($stkinfo, $database) {
 		}
 
 		if ($match == 0) {
-			printf ("create db subnet group\n");
-
-			$args = array ("rds", "create-db-subnet-group");
-			$args[] = "--db-subnet-group-name";
-			$args[] = $subnet_group_name;
-			$args[] = "--db-subnet-group-description";
-			$args[] = $subnet_group_name;
-			$args[] = "--subnet-ids";
-			$args[] = slimstk_getvar_region ("subnet_ids");
-			slimstk_aws ($args);
+			printf ("you need to create the db subnet group"
+				." in the aws RDS console\n");
+			
+			printf ("Name: %s\n", $subnet_group_name);
+			printf ("Description: %s\n", $subnet_group_name);
+			printf ("VPC ID: %s\n", $vpc_id);
+			printf ("then click 'add all the subnets'\n");
+			printf ("finally, run setup-acct again\n");
+			exit (1);
 		}
 	}
+
+	if (($db_type = @$stkinfo['db_type']) == NULL)
+		$db_type = "db.t1.micro";
 
 	$args = array ("rds", "create-db-instance");
 	$args[] = "--db-instance-identifier";
@@ -308,7 +309,7 @@ function setup_db ($stkinfo, $database) {
 	$args[] = "--allocated-storage";
 	$args[] = "5"; /* gigabytes, range 5..3072 */
 	$args[] = "--db-instance-class";
-	$args[] = "db.t1.micro";
+	$args[] = $db_type;
 	if ($stkinfo['vpc']) {
 		$args[] = "--db-subnet-group-name";
 		$args[] = $subnet_group_name;
@@ -324,7 +325,7 @@ function setup_db ($stkinfo, $database) {
 	$args[] = "--no-publicly-accessible";
 	
 	slimstk_aws ($args);
-	printf ("wait for database to start, then run setup-aws-acct again\n");
+	printf ("wait for database to start, then run setup-acct again\n");
 	exit (0);
 }
 
@@ -535,7 +536,10 @@ function setup_s3 () {
 }
 
 function find_subnet_by_avzone ($subnets, $avzone) {
+	global $vpc_id;
 	foreach ($subnets as $subnet) {
+		if (strcmp ($subnet['VpcId'], $vpc_id) != 0)
+			continue;
 		if (strcmp ($subnet['AvailabilityZone'], $avzone) == 0)
 			return ($subnet);
 	}

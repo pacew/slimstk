@@ -17,12 +17,21 @@ printf ("slimstk php boot script\n");
 system ("date");
 
 chmod ($_SERVER['HOME'], 0755);
+system ("sudo usermod -a -G apache ec2-user");
+
+$bashrc = ". /etc/bashrc\n"
+	.= "umask 2\n";
+file_put_contents ($_SERVER['HOME']."/.bashrc", $bashrc);
 
 system ("sudo mkdir -p /www/blank");
 system ("sudo cp /dev/null /www/blank/index.html");
 
 $dir = sprintf ("%s/sites-enabled", $_SERVER['HOME']);
 system ("mkdir -p $dir");
+
+if (! preg_match ('/umask/', file_get_contents ("/etc/sysconfig/httpd"))) {
+	system ("sudo sh -c '(echo; echo umask 2) >> /etc/sysconfig/httpd");
+}
 
 $httpd_conf = "/etc/httpd/conf/httpd.conf";
 $extra = "/opt/slimstk/httpd-extra.conf";

@@ -31,6 +31,14 @@ function slimstk_init_extended () {
 	$slimstk['conf_key'] = $parts[2];
 	$slimstk['tmpdir'] = sprintf ("/var/%s", $siteid);
 
+	if (! isset ($slimstk['apps'][$slimstk['app_name']])) {
+		printf ("confdir %s doesn't define applications %s\n"
+			." ... you may need to run slimstk login\n",
+			$slimstk['confdir'], $slimstk['app_name']);
+		exit (1);
+	}
+			
+
 	$issue = file_get_contents ("/etc/issue");
 	if (preg_match ('/Ubuntu 14/', $issue)) {
 		$slimstk['systype'] = "ubuntu";
@@ -40,6 +48,7 @@ function slimstk_init_extended () {
 		$slimstk['systype'] = "ubuntu";
 		$slimstk['sysvers'] = 12;
 		$slimstk['apache_conf_suffix'] = "";
+
 	} else if (preg_match ('/Amazon/', $issue)) {
 		$slimstk['systype'] = "amazon";
 		$slimstk['sysvers'] = 0;
@@ -54,12 +63,14 @@ function slimstk_init_extended () {
 		$slimstk['apache_conf_avail'] = "/etc/apache2/sites-available";
 		$slimstk['apache_conf_enabled'] = "/etc/apache2/sites-enabled";
 		$slimstk['apachectl'] = "apache2ctl";
+		$slimstk['apache_user'] = "www-data";
 	} else {
 		$slimstk['apache_dir'] = "/etc/httpd";
 		$slimstk['apache_conf_avail'] = "";
 		$slimstk['apache_conf_enabled']
 			= "/home/ec2-user/sites-enabled";
 		$slimstk['apachectl'] = "apachectl";
+		$slimstk['apache_user'] = "apache";
 	}
 }
 
