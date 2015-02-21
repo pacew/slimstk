@@ -345,7 +345,7 @@ function get_availability_zones () {
 }
 
 function setup_elb ($stkname) {
-	global $slimstk;
+	global $slimstk, $alternative_ssh_port;
 
 	$stkinfo = $slimstk['stacks'][$stkname];
 	slimstk_set_region ($stkinfo['region']);
@@ -535,8 +535,7 @@ function setup_s3 () {
 	}
 }
 
-function find_subnet_by_avzone ($subnets, $avzone) {
-	global $vpc_id;
+function find_subnet_by_avzone ($vpc_id, $subnets, $avzone) {
 	foreach ($subnets as $subnet) {
 		if (strcmp ($subnet['VpcId'], $vpc_id) != 0)
 			continue;
@@ -610,7 +609,8 @@ function setup_vpc ($region) {
 
 	$subnet_ids = array ();
 	foreach ($avzones as $avzone) {
-		if (($subnet = find_subnet_by_avzone($subnets,$avzone))==NULL){
+		if (($subnet = find_subnet_by_avzone ($vpc_id, $subnets,
+						     $avzone)) ==NULL) {
 			$addr = find_free_addr ($subnets, $vpc_addr);
 			if ($addr == NULL) {
 				printf ("no address available for subnet\n");

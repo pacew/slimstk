@@ -404,7 +404,8 @@ if (! $found) {
 		$asg_name);
 	printf ("*** you probably need to delete"
 		." and recreate the codedeploy\n");
-	printf ("*** deployment group\n");
+	printf ("*** deployment group"
+		." (or perhaps you haven't set up codedeploy yet)\n");
 }
 
 $update_asg = 0;
