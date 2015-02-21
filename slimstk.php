@@ -11,7 +11,10 @@ $slimstk = NULL;
 $alternative_ssh_port = 61953; /* random choice */
 
 function slimstk_init () {
-	global $slimstk_ext_flag;
+	global $slimstk_cmd_flag, $slimstk_ext_flag;
+
+	if (@$slimstk_cmd_flag)
+		slimstk_bail_out_on_error ();
 
 	slimstk_init_common ();
 	if (@$slimstk_ext_flag)
