@@ -164,6 +164,39 @@ $files[] = array ("src" => "TMP.tagcmd",
 
 @unlink ("TMP.app.tar");
 system ("git archive --output TMP.app.tar HEAD");
+
+exec ("git submodule", $rows, $rc);
+if ($rc == 0) {
+	foreach ($rows as $row) {
+		$arr = explode (' ', trim ($row));
+		$mod_commit = $arr[0];
+		$mod_name = $arr[1];
+		$prefix = sprintf ("%s/", $mod_name);
+		$cmd = sprintf ("cd %s;"
+				." git archive"
+				."  --output ../TMP.extra.tar"
+				."  --prefix %s"
+				."  %s",
+				escapeshellarg ($mod_name),
+				escapeshellarg ($prefix),
+				escapeshellarg ($mod_commit));
+		printf ("%s\n", $cmd);
+		system ($cmd, $rc);
+		if ($rc != 0) {
+			printf ("error handling submodule\n");
+			exit (1);
+		}
+		$cmd = sprintf ("tar --concatenate"
+				." --file=TMP.app.tar"
+				." TMP.extra.tar");
+		system ($cmd, $rc);
+		if ($rc != 0) {
+			printf ("error adding submodule\n");
+			exit (1);
+		}
+	}
+}
+
 $files[] = array ("src" => "TMP.app.tar",
 		  "dst" => "app.tar");
 
