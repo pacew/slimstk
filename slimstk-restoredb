@@ -1,0 +1,83 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/opt/slimstk/slimstkcmdext.php");
+slimstk_init ();
+
+function usage () {
+	printf ("usage: slimstk restoredb file\n");
+	exit (1);
+}
+
+$argc = $_SERVER['argc'];
+$argv = $_SERVER['argv'];
+
+while (($c = cgetopt ($argc, $argv, "")) != FALSE) {
+	switch ($c) {
+	default:
+		usage ();
+		break;
+	}
+}
+
+if ($optind >= $argc)
+	usage ();
+
+$filename = $argv[$optind++];
+
+if ($optind != $argc)
+	usage ();
+
+if (! file_exists ($filename)) {
+	printf ("%s does not exist\n", $filename);
+	exit (1);
+}
+
+$cmd = sprintf ("head -1 %s", escapeshellarg ($filename));
+if (! preg_match ('/MySQL dump/', shell_exec ($cmd))) {
+	printf ("%s does not look like a mysql dump file\n", $filename);
+	exit (1);
+}
+
+if ($slimstk['running_on_aws']) {
+	printf ("can't do this on a production site\n");
+	exit (1);
+}
+
+if (($pdo = make_db_connection ()) == NULL) {
+	printf ("can't connect to db server\n");
+	exit (1);
+}
+
+$dbname = $slimstk['siteid'];
+
+$use_stmt = sprintf ("use `%s`", $dbname);
+if ($pdo->exec ($cmd) !== false) {
+	$drop_stmt = sprintf ("drop database `%s`", $dbname);
+	if ($pdo->exec ($drop_stmt) === false) {
+		printf ("error dropping %s\n", $dbname);
+		exit (1);
+	}
+
+	if ($pdo->exec ($use_stmt) !== false) {
+		printf ("error dropping %s\n", $dbname);
+		exit (1);
+	}
+}
+
+$create_stmt = sprintf ("create database `%s`"
+			." default character set utf8"
+			." default collate utf8_general_ci",
+			$dbname);
+if ($pdo->exec ($create_stmt) === false) {
+	printf ("error creating database %s\n", $dbname);
+	exit (1);
+}
+
+$cmd = sprintf ("mysql %s < %s",
+		escapeshellarg ($dbname), escapeshellarg ($filename));
+printf ("%s\n", $cmd);
+system ($cmd);
+
+
+
