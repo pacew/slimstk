@@ -76,9 +76,6 @@ function slimstk_init_common () {
 		$stkname = trim (file_get_contents ("/opt/slimstk/stkname"));
 		$stkinfo = $slimstk['stacks'][$stkname];
 	}
-
-	if (function_exists ("slimstk_init_extended"))
-		slimstk_init_extended ();
 }
 
 function slimstk_get_aws_param ($path) {

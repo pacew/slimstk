@@ -72,6 +72,9 @@ function slimstk_init_extended () {
 		$slimstk['apachectl'] = "apachectl";
 		$slimstk['apache_user'] = "apache";
 	}
+
+	if ($slimstk['for_webpage'])
+		slimstk_session ();
 }
 
 function make_url ($host, $port, $ssl_flag) {
