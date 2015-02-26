@@ -7,7 +7,7 @@ require_once ("slimstk.php");
 function slimstk_init_extended () {
 	global $slimstk, $siteid, $app_name, $conf_key, $appinfo, $siteinfo;
 
-	if ($slimstk['for_webpage']) {
+	if (isset ($_SERVER['siteid'])) {
 		$siteid = $_SERVER['siteid'];
 	} else {
 		$dirname = trim (shell_exec ("git rev-parse --show-toplevel"
