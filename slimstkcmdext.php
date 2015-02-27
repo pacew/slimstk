@@ -435,8 +435,6 @@ function dbpatch ($db, $tables) {
 		$idxlist[$key] = 1;
 	}
 	
-	printf ("%s\n", json_encode ($idxlist));
-
 	foreach ($tables as $tbl) {
 		$need_create = 0;
 		if (! table_exists ($db, $tbl['name']))
