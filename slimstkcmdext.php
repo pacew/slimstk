@@ -423,6 +423,20 @@ function slimstk_setup_db () {
 function dbpatch ($db, $tables) {
 	if ($db == NULL)
 		$db = get_db ();
+
+	$q = query ("select distinct table_name, index_name"
+		    ." from information_schema.statistics"
+		    ." where table_schema = ?",
+		    $db->dbname);
+	$idxlist = array ();
+	while (($r = fetch ($q)) != NULL) {
+		$key = sprintf ("%s|%s",
+				$r->table_name, $r->index_name);
+		$idxlist[$key] = 1;
+	}
+	
+	printf ("%s\n", json_encode ($idxlist));
+
 	foreach ($tables as $tbl) {
 		$need_create = 0;
 		if (! table_exists ($db, $tbl['name']))
@@ -445,6 +459,20 @@ function dbpatch ($db, $tables) {
 			if ($stmt) {
 				printf ("dbpatch: %s\n", $stmt);
 				query_db ($db, $stmt);
+			}
+		}
+
+		foreach ($tbl as $param => $idxargs) {
+			if (strncmp ($param, "idx", 3) != 0)
+				continue;
+			$idx_name = sprintf ("%s_%s", $tbl['name'], $param);
+			$key = sprintf ("%s|%s", $tbl['name'], $idx_name);
+			if (! isset ($idxlist[$key])) {
+				$stmt = sprintf ("create index %s on %s(%s)",
+						 $idx_name,
+						 $tbl['name'],
+						 implode (',', $idxargs));
+				query ($stmt);
 			}
 		}
 	}
