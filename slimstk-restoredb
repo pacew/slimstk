@@ -52,7 +52,7 @@ if (($pdo = make_db_connection ()) == NULL) {
 $dbname = $slimstk['siteid'];
 
 $use_stmt = sprintf ("use `%s`", $dbname);
-if ($pdo->exec ($cmd) !== false) {
+if ($pdo->exec ($use_stmt) !== false) {
 	$drop_stmt = sprintf ("drop database `%s`", $dbname);
 	if ($pdo->exec ($drop_stmt) === false) {
 		printf ("error dropping %s\n", $dbname);
