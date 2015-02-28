@@ -372,3 +372,16 @@ function get_seq () {
 	return ($newval);
 }
 
+function pave_path ($dirname) {
+	$arr = explode ('/', $dirname);
+	$name_so_far = "";
+	foreach ($arr as $nextpart) {
+		$name_so_far .= $nextpart;
+		if ($name_so_far && ! file_exists ($name_so_far)) {
+			mkdir ($name_so_far);
+			chmod ($name_so_far, 0775);
+		}
+		$name_so_far .= "/";
+	}
+}
+
