@@ -127,7 +127,7 @@ function make_virtual_host ($args, $config) {
 	$ret .= sprintf ("  ServerName %s\n", $with_www);
 	$ret .= sprintf ("  ServerAlias %s\n", $without_www);
 
-	$ret .= sprintf ("  DocumentRoot %s\n", $config['site_root']);
+	$ret .= sprintf ("  DocumentRoot %s/website\n", $config['app_root']);
 	$ret .= sprintf ("  FileETag none\n");
 
 	if ($slimstk['systype'] == "ubuntu")
@@ -207,7 +207,7 @@ function slimstk_apache_config ($global_args) {
 	$config['siteid'] = $slimstk['siteid'];
 	$config['site_name'] = $slimstk['app_name'];
 	$config['conf_key'] = $slimstk['conf_key'];
-	$config['site_root'] = getcwd() . "/website";
+	$config['app_root'] = getcwd();
 
 	if ($slimstk['systype'] == "amazon") {
 		$config['devel_mode'] = 0;
@@ -274,6 +274,9 @@ function slimstk_apache_config ($global_args) {
 	}
 
 	$apache_conf .= "\n";
+
+	if (file_exists ("/etc/apache2/mods-enabled/valhtml.load"))
+		$apache_conf .= "  AddOutputFilterByType VALHTML text/html\n";
 
 	$apache_conf .= "</Directory>\n";
 	$apache_conf .= "\n";
