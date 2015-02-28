@@ -379,7 +379,7 @@ function pave_path ($dirname) {
 		$name_so_far .= $nextpart;
 		if ($name_so_far && ! file_exists ($name_so_far)) {
 			mkdir ($name_so_far);
-			chmod ($name_so_far, 0775);
+			chmod ($name_so_far, fileperms ($name_so_far) | 0775);
 		}
 		$name_so_far .= "/";
 	}
