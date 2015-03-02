@@ -208,6 +208,16 @@ function query_db ($db, $stmt, $arr = NULL) {
 
 	$q = (object)NULL;
 
+	global $csrf_safe, $csrf_skip;
+	if (($op == "insert" || $op == "delete" || $op == "update")
+	    && isset ($csrf_safe)
+	    && $csrf_safe == 0
+	    && @$csrf_skip == 0) {
+		trigger_error ("internal error: database update attempted"
+			       ." before calling csrf_safe()");
+		exit (1);
+	}
+
 	if ($op != "commit") {
 		if ($db->in_transaction == 0) {
 			$q->q = $db->pdo->query("start transaction");
@@ -298,6 +308,8 @@ function slimstk_session_write ($session_id, $session) {
 		    ." where session_id = ?",
 		    $session_id);
 	$ts = strftime ("%Y-%m-%d %H:%M:%S");
+	global $csrf_skip;
+	$csrf_skip = 1;
 	if (fetch ($q) == NULL) {
 		query ("insert into sessions (session_id, updated, session)"
 		       ." values (?,?,?)",
@@ -307,6 +319,7 @@ function slimstk_session_write ($session_id, $session) {
 		       ." where session_id = ?",
 		       array ($ts, $session, $session_id));
 	}
+	$csrf_skip = 0;
 	do_commits ();
 }
 
