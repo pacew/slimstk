@@ -1,0 +1,73 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/opt/slimstk/slimstkcmdext.php");
+slimstk_init ();
+
+function usage () {
+	printf ("usage: slimstk dbrestore sqlfile\n");
+	exit (1);
+}
+
+$argc = $_SERVER['argc'];
+$argv = $_SERVER['argv'];
+
+while (($c = cgetopt ($argc, $argv, "")) != FALSE) {
+	switch ($c) {
+	default:
+		usage ();
+		break;
+	}
+}
+
+if ($optind >= $argc)
+	usage ();
+
+$inname = $argv[$optind++];
+
+if ($optind != $argc)
+	usage ();
+
+if ($slimstk['running_on_aws']) {
+	printf ("can't run this on aws\n");
+	exit (1);
+}
+
+$dbname = $slimstk['siteid'];
+
+$pdo = make_db_connection ();
+
+$q = $pdo->prepare ("select 0"
+		    ." from information_schema.schemata"
+		    ." where schema_name = ?");
+$q->execute (array ($dbname));
+if ($q->fetch (PDO::FETCH_OBJ) != NULL) {
+	printf ("database %s already exisits ... do you want to drop it? ",
+		$dbname);
+	if (trim (slimstk_gets ()) != "y") {
+		printf ("aborted\n");
+		exit (1);
+	}
+	
+	$stmt = sprintf ("drop database `%s`", $dbname);
+	$pdo->exec ($stmt);
+}
+
+$stmt = sprintf ("create database `%s`"
+		 ." default character set utf8"
+		 ." default collate utf8_general_ci",
+		 $dbname);
+$pdo->exec ($stmt);
+
+$stmt = sprintf ("grant all privileges on `%s`.* to `www-data`@`localhost`",
+		 $dbname);
+$pdo->exec ($stmt);
+
+$cmd = sprintf ("mysql %s < %s", 
+		escapeshellarg ($dbname),
+		escapeshellarg ($inname));
+printf ("%s\n", $cmd);
+system ($cmd, $rc);
+
+exit ($rc);
+

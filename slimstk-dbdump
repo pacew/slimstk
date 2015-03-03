@@ -1,0 +1,37 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/opt/slimstk/slimstkcmdext.php");
+slimstk_init ();
+
+function usage () {
+	printf ("usage: slimstk dbdump outfile\n");
+	exit (1);
+}
+
+$argc = $_SERVER['argc'];
+$argv = $_SERVER['argv'];
+
+while (($c = cgetopt ($argc, $argv, "")) != FALSE) {
+	switch ($c) {
+	default:
+		usage ();
+		break;
+	}
+}
+
+if ($optind >= $argc)
+	usage ();
+
+$outname = $argv[$optind++];
+
+if ($optind != $argc)
+	usage ();
+
+$cmd = sprintf ("mysqldump --result-file=%s --skip-dump-date %s",
+		escapeshellarg ($outname),
+		$slimstk['siteid']);
+printf ("%s\n", $cmd);
+system ($cmd, $rc);
+
+exit ($rc);
