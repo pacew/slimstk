@@ -1,0 +1,24 @@
+function get_work_queue () {
+	global $siteid;
+
+	$namelen = strlen ($siteid);
+
+	$args = array ("sqs", "list-queues");
+	$val = slimstk_aws ($args);
+
+	$found = 0;
+	foreach ($val['QueueUrls'] as $url) {
+		$suffix = substr ($url, - $namelen);
+		if (strcmp ($suffix, $siteid) == 0) {
+			return ($url);
+		}
+	}
+
+	$args = array ("sqs", "create-queue");
+	$args[] = "--queue-name";
+	$args[] = $siteid;
+	$val = slimstk_aws ($args);
+	$url = $val['QueueUrl'];
+
+	return ($url);
+}

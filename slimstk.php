@@ -62,14 +62,6 @@ function slimstk_init_common () {
 		$slimstk['running_on_aws'] = 0;
 	}
 
-	if ($slimstk['for_webpage'] || $slimstk['running_on_aws']) {
-		unset ($slimstk['profile']);
-	} else if (isset ($_SERVER['USER'])) {
-		$slimstk['profile'] = sprintf ("%s-%s",
-					       $slimstk['aws_acct_name'],
-					       $_SERVER['USER']);
-	}
-
 	if ($slimstk['running_on_aws']
 	    && file_exists ("/opt/slimstk/stkname")) {
 		global $stkname, $stkinfo;

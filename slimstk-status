@@ -6,7 +6,6 @@ slimstk_init ();
 
 printf ("confdir %s\n", $slimstk['confdir']);
 printf ("aws_acct_name %s\n", $slimstk['aws_acct_name']);
-printf ("profile %s\n", $slimstk['profile']);
 printf ("running_on_aws %s\n", $slimstk['running_on_aws']);
 
 if (isset ($stkname)) {

@@ -1,0 +1,12 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/opt/slimstk/slimstkcmd.php");
+slimstk_init ();
+
+$argv = $_SERVER['argv'];
+
+$val = slimstk_aws (array_slice ($argv, 1), 0, 0);
+printf ("%s\n", $val);
+
+

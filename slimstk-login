@@ -90,6 +90,16 @@ if ($text == NULL) {
 	exit (1);
 }
 
+$label = sprintf ("slimstk aws %s", $aws_acct_name);
+$cmd = sprintf ("secret-tool store --label %s slimstk %s",
+		escapeshellarg ($label),
+		escapeshellarg ($aws_acct_name));
+printf ("%s\n", $cmd);
+$outf = popen ($cmd, "w");
+fwrite ($outf, $text);
+pclose ($outf);
+
+
 $text2 = preg_replace ("/[[].*[]]/", "[default]", $text);
 
 $aws_dir = sprintf ("%s/.aws", $_SERVER['HOME']);
@@ -97,9 +107,17 @@ if (! file_exists ($aws_dir))
 	mkdir ($aws_dir, 0700);
 chmod ($aws_dir, 0700);
 
+$dest = sprintf ("%s/credentials-%s", $aws_dir, $aws_acct_name);
+@unlink ($dest);
+file_put_contents ($dest, "");
+chmod ($dest, 0600);
+file_put_contents ($dest, $text."\n");
+
+@unlink ($dest);
+file_put_contents ($dest, "");
+chmod ($dest, 0600);
 $dest = sprintf ("%s/credentials", $aws_dir);
 file_put_contents ($dest, sprintf ("%s\n\n%s\n\n", $text, $text2));
-chmod ($dest, 0600);
 
 $sdir = sprintf ("%s/.slimstk", $_SERVER['HOME']);
 if (! file_exists ($sdir))
