@@ -70,6 +70,7 @@ function slimstk_init_common () {
 					    $slimstk['aws_acct_name'],
 					    $_SERVER['USER']);
 			putenv ("AWS_DEFAULT_PROFILE=".$profile);
+			$slimstk['profile'] = $profile;
 		}
 	} else {
 		$slimstk['for_webpage'] = 1;
