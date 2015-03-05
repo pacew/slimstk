@@ -41,76 +41,8 @@ function slimstk_putvar_region ($key, $val) {
 	return (slimstk_putvar ($full_key, $val));
 }
 
-function slimstk_get_aws_credentials () {
-	global $slimstk_aws_credentials;
-
-	if (posix_getuid () == 0) {
-		/* for root, secret-tool hangs */
-		printf ("slimstk_get_aws_credentials: cannot call as root\n");
-		exit (1);
-	}
-
-
-	if (! isset ($aws_credentials)) {
-		$cmd = sprintf ("secret-tool lookup slimstk %s",
-				escapeshellarg ($slimstk['aws_acct_name']));
-		if (($creds = trim (shell_exec ($cmd))) == "")
-			return (NULL);
-
-		if (! preg_match ("/aws_access_key_id\\s*=\\s*([^\\s*]*)/",
-				  $creds, $parts))
-			return (NULL);
-
-		$key_id = $parts[1];
-
-		if (! preg_match ("/aws_secret_access_key\\s*=\\s*([^\\s*]*)/",
-				  $creds, $parts))
-			return (NULL);
-
-		$secret = $parts[1];
-		
-		$slimstk_aws_credentials = array ("key_id" => $key_id,
-						  "secret" => $secret);
-	}
-	return ($slimstk_aws_credentials);
-}
-		
 function slimstk_aws ($args, $ignore_errors = 0, $json_decode = 1) {
 	global $slimstk;
-
-	if (getenv ("AWS_SECRET_ACCESS_KEY") == "") {
-		$creds = slimstk_aws
-
-		putenv ("AWS_ACCESS_KEY_ID=" . $key_id);
-		putenv ("AWS_SECRET_ACCESS_KEY=" . $secret);
-
-
-		$cmd = sprintf ("secret-tool lookup slimstk %s",
-				escapeshellarg ($slimstk['aws_acct_name']));
-		if (($creds = trim (shell_exec ($cmd))) == "") {
-			printf ("can't find aws credentials for %s"
-				." ... you need to run slimstk login\n",
-				$slimstk['aws_acct_name']);
-			exit (1);
-		}
-
-		if (! preg_match ("/aws_access_key_id\\s*=\\s*([^\\s*]*)/",
-				  $creds, $parts)) {
-			printf ("can't find aws key_id\n");
-			exit (1);
-		}
-		$key_id = $parts[1];
-
-		if (! preg_match ("/aws_secret_access_key\\s*=\\s*([^\\s*]*)/",
-				  $creds, $parts)) {
-			printf ("can't find aws secret\n");
-			exit (1);
-		}
-		$secret = $parts[1];
-
-		putenv ("AWS_ACCESS_KEY_ID=" . $key_id);
-		putenv ("AWS_SECRET_ACCESS_KEY=" . $secret);
-	}
 
 	$cmd = "aws";
 

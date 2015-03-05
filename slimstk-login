@@ -3,28 +3,9 @@
 
 $argv = $_SERVER['argv'];
 
-if (($arg = trim (@$argv[1])) == "") {
-	printf ("usage: slimstk-login confdir|acctname\n");
+if (($confdir = trim (@$argv[1])) == "") {
+	printf ("usage: slimstk-login confdir\n");
 	exit (1);
-}
-
-if (strncmp ($arg, "/", 1) == 0) {
-	$confdir = rtrim ($arg, '/');
-	$update_confdir = 1;
-} else if (preg_match (':/:', $arg)) {
-	printf ("argument must be either the absolute path to the\n"
-		."stack config directory, or the name of an aws account\n");
-	exit (1);
-} else {
-	$fname = sprintf ("%s/.slimstk/confdir-%s", $_SERVER['HOME'], $arg);
-	$confdir = trim (@file_get_contents ($fname));
-	if ($confdir == "") {
-		printf ("%s not found\n", $fname);
-		printf ("try again giving the absolute path to"
-			." your stack's config directory\n");
-		exit (1);
-	}
-	$update_confdir = 0;
 }
 
 $stacks_name = sprintf ("%s/stacks.json", $confdir);
@@ -80,6 +61,25 @@ if (! file_exists ($gpg_name)) {
 	printf ("%s created\n", $gpg_name);
 }
 
+$awsdir = sprintf ("%s/.aws", $_SERVER['HOME']);
+if (! file_exists ($awsdir)) {
+	mkdir ($awsdir, 0700);
+}
+$credfile = sprintf ("%s/credentials", $awsdir);
+
+$creds = array ();
+
+$old_text = @file_get_contents ($credfile);
+
+/* break up by lines that start with left square bracket */
+preg_match_all ('/^([[][^[]*)/m', $old_text, $matches);
+foreach ($matches[1] as $item) {
+	/* find the word insides the square brackets */
+	preg_match ('/[[](.*)[]]/', $item, $parts);
+	$profile = $parts[1];
+	$creds[$profile] = trim ($item);
+}
+
 $cmd = sprintf ("gpg --quiet --decrypt --output - %s",
 		escapeshellarg ($gpg_name));
 
@@ -90,45 +90,15 @@ if ($text == NULL) {
 	exit (1);
 }
 
-$label = sprintf ("slimstk aws %s", $aws_acct_name);
-$cmd = sprintf ("secret-tool store --label %s slimstk %s",
-		escapeshellarg ($label),
-		escapeshellarg ($aws_acct_name));
-printf ("%s\n", $cmd);
-$outf = popen ($cmd, "w");
-fwrite ($outf, $text);
-pclose ($outf);
+$profile = sprintf ("%s-%s", $aws_acct_name, $user);
+$creds[$profile] = $text;
 
-
-$text2 = preg_replace ("/[[].*[]]/", "[default]", $text);
-
-$aws_dir = sprintf ("%s/.aws", $_SERVER['HOME']);
-if (! file_exists ($aws_dir))
-	mkdir ($aws_dir, 0700);
-chmod ($aws_dir, 0700);
-
-$dest = sprintf ("%s/credentials-%s", $aws_dir, $aws_acct_name);
-@unlink ($dest);
-file_put_contents ($dest, "");
-chmod ($dest, 0600);
-file_put_contents ($dest, $text."\n");
-
-@unlink ($dest);
-file_put_contents ($dest, "");
-chmod ($dest, 0600);
-$dest = sprintf ("%s/credentials", $aws_dir);
-file_put_contents ($dest, sprintf ("%s\n\n%s\n\n", $text, $text2));
-
-$sdir = sprintf ("%s/.slimstk", $_SERVER['HOME']);
-if (! file_exists ($sdir))
-	mkdir ($sdir, 0775);
-
-$fname = sprintf ("%s/current-confdir", $sdir);
-file_put_contents ($fname, $confdir . "\n");
-
-if ($update_confdir) {
-	$fname = sprintf ("%s/confdir-%s", $sdir, $aws_acct_name);
-	file_put_contents ($fname, $confdir . "\n");
+$tname = tempnam ($awsdir, "TMP.");
+$outf = fopen ($tname, "w");
+foreach ($creds as $profile => $item) {
+	fprintf ($outf, "%s\n\n", $item);
 }
+fclose ($outf);
+rename ($tname, $credfile);
 
 printf ("ready to use aws account %s\n", $aws_acct_name);

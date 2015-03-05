@@ -24,17 +24,34 @@ function slimstk_init () {
 function slimstk_init_common () {
 	global $slimstk, $slimstk_cmd_flag;
 
-	if (isset ($_SERVER['confdir'])) {
-		$confdir = $_SERVER['confdir'];
-	} else if (file_exists ("/opt/slimstk/stacks.json")) {
+	$confdir = @$_SERVER['confdir'];
+
+	if ($confdir == NULL && file_exists ("/opt/slimstk/stacks.json")) {
 		$confdir = "/opt/slimstk";
-	} else {
-		$fname = sprintf ("%s/.slimstk/current-confdir",
-				  $_SERVER['HOME']);
-		if (($confdir = trim (file_get_contents ($fname))) == "") {
-			printf ("you need to run slimstk-login\n");
-			exit (1);
+	}
+	
+	if ($confdir == NULL) {
+		$argc = $_SERVER['argc'];
+		$argv = $_SERVER['argv'];
+		for ($idx = 1; $idx < $argc; $idx++) {
+			if (preg_match ('/^--confdir=(.*)/',
+					$argv[$idx], $parts)) {
+				$confdir = $parts[1];
+				unset ($_SERVER['argv'][$idx]);
+			}
 		}
+	}
+
+	if ($confdir == NULL) {
+		$confdir = trim (shell_exec ("git config slimstk.confdir"
+					     ." 2> /dev/null"));
+	}
+
+	if ($confdir == "") {
+		printf ("can't find confdir\n"
+			." you need to give --confdir=DIR or"
+			." run slimstk-login\n");
+		exit (1);
 	}
 
 	$stacks_file = sprintf ("%s/stacks.json", $confdir);
@@ -47,6 +64,13 @@ function slimstk_init_common () {
 
 	if ($slimstk_cmd_flag) {
 		$slimstk['for_webpage'] = 0;
+
+		if (isset ($_SERVER['USER'])) {
+			$profile = sprintf ("%s-%s",
+					    $slimstk['aws_acct_name'],
+					    $_SERVER['USER']);
+			putenv ("AWS_DEFAULT_PROFILE=".$profile);
+		}
 	} else {
 		$slimstk['for_webpage'] = 1;
 	}
