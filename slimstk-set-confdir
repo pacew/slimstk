@@ -1,0 +1,50 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+$argv = $_SERVER['argv'];
+
+if (($confdir = trim (@$argv[1])) == "") {
+	printf ("usage: slimstk set-confdir confdir\n");
+	exit (1);
+}
+
+$confdir = realpath ($confdir);
+ 
+$stacks_name = sprintf ("%s/stacks.json", $confdir);
+if (($slimstk = @json_decode (file_get_contents ($stacks_name), true))
+    == NULL) {
+	printf ("%s doesn't appear to be valid\n", $name);
+	exit (1);
+}
+
+if (($top = shell_exec ("git rev-parse --show-toplevel"
+			." 2> /dev/null")) == NULL) {
+	printf ("slimstk set-confdir must be called within a git repository\n");
+	exit (1);
+}
+$top = trim ($top);
+
+$fname1 = sprintf ("%s/install-site", $top);
+$fname2 = sprintf ("%s/website", $top);
+
+if (! file_exists ($fname1) || ! file_exists ($fname2)) {
+	printf ("this doesn't look like a site repository because\n");
+	printf ("%s and %s don't exist\n", $fname1, $fname2);
+	exit (1);
+}
+
+$app_name = preg_replace ('/-.*/', '', basename ($top));
+
+if (! isset ($slimstk['apps'][$app_name])) {
+	printf ("%s does not have a configuration for app %s\n",
+		$stacks_name, $app_name);
+	exit (1);
+}
+
+
+$cmd = sprintf ("git config --replace-all slimstk.confdir %s", 
+		escapeshellarg ($confdir));
+system ($cmd);
+
+printf ("confdir set to %s in .git/config\n", $confdir);
+
