@@ -18,7 +18,7 @@ function slimstk_init_extended () {
 		$siteid = preg_replace ('/[.].*/', '', $dirname);
 	}
 
-	if (! preg_match ('/-/', $siteid))
+	if (! preg_match ('/-/', $siteid) && @$_SERVER['USER'])
 		$siteid .= sprintf ("-%s", @$_SERVER['USER']);
 
 	if (! preg_match ('/^([^-]*)-(.*)$/', $siteid, $parts)) {
@@ -200,8 +200,12 @@ function query_db ($db, $stmt, $arr = NULL) {
 		exit ();
 	}
 
-	if ($db == NULL)
-		$db = get_db ();
+	if ($db == NULL) {
+		if (($db = get_db ()) == NULL) {
+			printf ("can't make db connection\n");
+			exit ();
+		}
+	}
 
 	preg_match ("/^[ \t\r\n(]*([a-zA-Z]*)/", $stmt, $parts);
 	$op = strtolower (@$parts[1]);

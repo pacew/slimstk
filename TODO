@@ -13,3 +13,5 @@ healthcheck uses /www/blank/index.html - change to index.php and check
 database connection
 
 move google auth secret to gpg
+
+used reduced redundancy storage for tmp files
