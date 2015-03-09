@@ -1,17 +1,17 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
+$argv = $_SERVER['argv'];
+$confdir = trim (@$argv[1]);
+$stkname = trim (@$argv[2]);
+if (! file_exists ($confdir . "/stacks.json"))
+	usage ();
+if ($stkname == "")
+	usage ();
+$_SERVER['confdir'] = $confdir;
+
 require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_init ();
-
-$argv = $_SERVER['argv'];
-
-$stkname = trim (@$argv[1]);
-
-if ($stkname == "") {
-	printf ("usage: asg-on stackname\n");
-	exit (1);
-}
 
 if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
 	printf ("unknown stack %s for account %s\n",

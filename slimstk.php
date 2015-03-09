@@ -62,10 +62,17 @@ function slimstk_init_common () {
 	}
 	$slimstk['confdir'] = $confdir;
 
+	if (preg_match ('/Amazon.*AMI/',
+			@file_get_contents ("/etc/system-release"))) {
+		$slimstk['running_on_aws'] = 1;
+	} else {
+		$slimstk['running_on_aws'] = 0;
+	}
+
 	if ($slimstk_cmd_flag) {
 		$slimstk['for_webpage'] = 0;
 
-		if (isset ($_SERVER['USER'])) {
+		if ($slimstk['running_on_aws'] && isset ($_SERVER['USER'])) {
 			$profile = sprintf ("%s-%s",
 					    $slimstk['aws_acct_name'],
 					    $_SERVER['USER']);
@@ -79,13 +86,6 @@ function slimstk_init_common () {
 	$vars_file = sprintf ("%s/vars.json", $confdir);
 	$slimstk['vars_file'] = $vars_file;
 	$slimstk['vars'] = @json_decode (file_get_contents($vars_file), true);
-
-	if (preg_match ('/Amazon.*AMI/',
-			@file_get_contents ("/etc/system-release"))) {
-		$slimstk['running_on_aws'] = 1;
-	} else {
-		$slimstk['running_on_aws'] = 0;
-	}
 
 	if ($slimstk['running_on_aws']
 	    && file_exists ("/opt/slimstk/stkname")) {
