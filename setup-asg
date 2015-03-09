@@ -381,7 +381,7 @@ if ($asg == NULL) {
 	$args[] = "--health-check-type";
 	$args[] = "ELB";
 	$args[] = "--health-check-grace-period";
-	$args[] = "120";
+	$args[] = 4 * 60;
 	slimstk_aws ($args);
 	$asg = get_autoscaling_group ();
 }
