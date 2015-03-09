@@ -34,5 +34,6 @@ fi
 sh ${deploy_dir}/tagcmd
 
 siteid=`echo $dest_name | sed 's/[.].*//'`
+rm -f /home/ec2-user/${siteid}
 ln -sf ${dest_name} /home/ec2-user/${siteid}
 
