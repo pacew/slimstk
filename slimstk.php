@@ -72,7 +72,7 @@ function slimstk_init_common () {
 	if ($slimstk_cmd_flag) {
 		$slimstk['for_webpage'] = 0;
 
-		if ($slimstk['running_on_aws'] && isset ($_SERVER['USER'])) {
+		if (! $slimstk['running_on_aws'] && isset ($_SERVER['USER'])) {
 			$profile = sprintf ("%s-%s",
 					    $slimstk['aws_acct_name'],
 					    $_SERVER['USER']);
