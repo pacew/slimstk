@@ -159,7 +159,9 @@ system ("sudo /tmp/codedeploy-install auto");
 system ("date");
 
 printf ("running asg-cycle to kill stales inst(s)\n");
-$cmd = sprintf ("/opt/slimstk/asg-cycle %s", escapeshellarg ($stkname));
+$cmd = sprintf ("/opt/slimstk/asg-cycle %s %s",
+		escapeshellarg ($slimstk['confdir']),
+		escapeshellarg ($stkname));
 system ($cmd);
 
 printf ("slimstk boot done\n");

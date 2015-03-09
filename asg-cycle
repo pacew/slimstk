@@ -1,6 +1,11 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
+function usage () {
+	printf ("usage: asg-cycle confdir stkname\n");
+	exit (1);
+}
+
 $argv = $_SERVER['argv'];
 $confdir = trim (@$argv[1]);
 $stkname = trim (@$argv[2]);
