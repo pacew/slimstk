@@ -57,7 +57,8 @@ if (($image_id = @$images[$region]) == NULL) {
  * m3.medium .070 $50.40
  * m3.large .140 $100
  */
-$instance_type = "t2.small";
+if (($instance_type = @$stkinfo['instance_type']) == "")
+	$instance_type = "t2.micro";
 
 $keypair = "test-key-pair";
 
@@ -72,12 +73,17 @@ $base_pkgs = array (
 	"aws-cli",
 	"git",
 	"mod_ssl",
-	"php-pecl-xdebug",
-	"nodejs",
-	"npm"
+	"php-pecl-xdebug"
 	);
 
+$enable_nodejs = 0;
+if ($enable_nodejs) {
+	$base_pkgs[] = "nodejs";
+	$base_pkgs[] = "npm";
+}
+
 function make_boot_script ($boot) {
+	global $enable_nodejs;
 	/*
 	 * run as root in the root directory, no arguments
 	 * environment is pretty bare - here is interesting stuff:
@@ -114,7 +120,10 @@ function make_boot_script ($boot) {
 
 	$ret .= "yum update -y\n";
 	$ret .= "date\n";
-	$ret .= sprintf ("yum install --enablerepo=epel -y %s\n",
+	$extra = "";
+	if ($enable_nodejs)
+		$extra = " --enablerepo=epel ";
+	$ret .= sprintf ("yum install $extra -y %s\n",
 			 implode (" ", $boot['pkgs']));
 	$ret .= "date\n";
 

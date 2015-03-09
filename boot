@@ -154,14 +154,18 @@ $dst = "/tmp/codedeploy-install";
 system ("aws s3 cp $src $dst");
 chmod ($dst, 0755);
 system ("date");
-printf ("installing codedeploy ... this takes 3 minutes\n");
 system ("sudo /tmp/codedeploy-install auto");
 system ("date");
 
-printf ("running asg-cycle to kill stales inst(s)\n");
-$cmd = sprintf ("/opt/slimstk/asg-cycle %s %s",
-		escapeshellarg ($slimstk['confdir']),
-		escapeshellarg ($stkname));
-system ($cmd);
+if (0) {
+	printf ("since codedeploy-install doesn't sleep any more,"
+		." sleeping here...\n");
+	sleep (3 * 60);
+	printf ("running asg-cycle to kill stales inst(s)\n");
+	$cmd = sprintf ("/opt/slimstk/asg-cycle %s %s",
+			escapeshellarg ($slimstk['confdir']),
+			escapeshellarg ($stkname));
+	system ($cmd);
+}
 
 printf ("slimstk boot done\n");

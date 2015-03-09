@@ -127,7 +127,7 @@ $appspec = "version: 0.0\n"
 	."hooks:\n"
 	."  ApplicationStart:\n"
 	."    - location: deploy-inst\n"
-	."      timeout: 60\n"
+	."      timeout: 600\n"
 	."      runas: ec2-user\n"
 	;
 
