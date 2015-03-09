@@ -1,4 +1,12 @@
 #! /bin/sh
 
-scp `cat INST-FILES` finance2-production:/opt/slimstk
+if [ $# != 1 ]
+then
+    echo "usage: dev-update hostname"
+    exit 1
+fi
+
+hname=$1
+
+scp `cat INST-FILES` ${hname}:/opt/slimstk
 

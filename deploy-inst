@@ -8,22 +8,32 @@
 # /opt/codedeploy-agent/deployment-root/1c0.../d-8MW.../logs/scripts.log
 
 
-depdir=`dirname $0`
+deploy_dir=`dirname $0`
 
 date
-echo "deploy from $depdir"
+echo "deploy from ${deploy_dir}"
 
-cd $depdir
+cd ${deploy_dir}
 
-dname=`cat dname`
+dest_name=`cat dname`
 
-destdir=/home/ec2-user/$dname
-mkdir -p $destdir
+dest_dir=/home/ec2-user/${dest_name}
+mkdir -p ${destdir}
 
-tar -C $destdir -xf app.tar
-cp commit $destdir/website/.
+tar -C ${dest_dir} -xf app.tar
+cp commit ${dest_dir}/website/.
 
-cd $destdir
+cd ${dest_dir}
 ./install-site
+if [ $? != 0 ]
+then
+    echo "error running install-site"
+    exit 1
+fi
 
-sh $depdir/tagcmd
+sh ${deploy_dir}/tagcmd
+
+siteid=`echo $dest_name | sed 's/[.].*//'`
+rm -f ${siteid}
+ln -s ${dest_name} ${siteid}
+

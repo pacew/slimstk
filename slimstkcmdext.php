@@ -377,13 +377,8 @@ function slimstk_activate_apache_conf ($config) {
 	system ($cmd);
 }
 
-function slimstk_setup_db () {
+function slimstk_maybe_create_db ($dbname) {
 	global $slimstk;
-
-	if (($dbname = @$slimstk['siteid']) == "") {
-		printf ("siteid must be specified to setup default db\n");
-		exit (1);
-	}
 
 	if (($pdo = make_db_connection ()) == NULL)
 		return (-1);
@@ -398,7 +393,7 @@ function slimstk_setup_db () {
 			printf ("error running: %s\n", $stmt);
 			return (-1);
 		}
-		if ($slimstk['running_on_aws'] == 0) {
+		if (! $slimstk['running_on_aws']) {
 			$stmt = sprintf ("grant all privileges on `%s`.*"
 					 ." to `www-data`@`localhost`",
 					 $dbname);
@@ -409,6 +404,19 @@ function slimstk_setup_db () {
 		}
 	}
 	$pdo = NULL;
+	return (0);
+}
+
+function slimstk_setup_db () {
+	global $slimstk;
+
+	if (($dbname = @$slimstk['siteid']) == "") {
+		printf ("siteid must be specified to setup default db\n");
+		exit (1);
+	}
+
+	if (slimstk_maybe_create_db ($dbname) < 0)
+		return (-1);
 
 	$schema = array ();
 	$schema[] = array ("name" => "sessions",
@@ -476,5 +484,93 @@ function dbpatch ($db, $tables) {
 				query ($stmt);
 			}
 		}
+	}
+}
+
+$slimstk_db = NULL;
+function get_slimstk_db () {
+	global $slimstk_db;
+
+	if ($slimstk_db)
+		return ($slimstk_db);
+
+	$dbname = "slimstk";
+	if (slimstk_maybe_create_db ($dbname) < 0)
+		return (NULL);
+
+	if (($slimstk_db = get_db ($dbname)) == NULL)
+		return (NULL);
+
+	$schema = array ();
+	$schema[] = array ("name" => "seq",
+			   "cols" => array ("lastval" => "integer"));
+	$schema[] = array ("name" => "boot_log",
+			   "cols" => array ("boot_log_id" => "integer",
+					    "record_time" => "datetime",
+					    "instance_id" => "longtext",
+					    "launch_time" => "datetime",
+					    "boot_secs" => "integer",
+					    "msg" => "longtext"));
+	dbpatch ($slimstk_db, $schema);
+
+	return ($slimstk_db);
+}
+
+function slimstk_boot_msg ($msg) {
+	global $slimstk, $slimstk_db;
+
+	if (! $slimstk['running_on_aws']) {
+		printf ("boot msg: %s\n", $msg);
+		return;
+	}
+
+	$str = slimstk_get_aws_param("/dynamic/instance-identity/document");
+	$val = json_decode ($str, true);
+	$instance_id = $val['instanceId'];
+	$region = $val['region'];
+
+	slimstk_set_region ($region);
+
+	$args = array ("ec2", "describe-instances");
+	$val = slimstk_aws ($args);
+	$found = 0;
+	foreach ($val['Reservations'] as $resv) {
+		foreach ($resv['Instances'] as $inst) {
+			if (strcmp ($inst['InstanceId'], $instance_id) == 0) {
+				$found = 1;
+				break;
+			}
+		}
+		if ($found)
+			break;
+	}
+	if (! $found) {
+		printf ("simstk_boot_log: can't find my instance info\n");
+		return;
+	}
+
+	$launch_time = strtotime ($inst['LaunchTime']);
+	$now = time ();
+	$delta = $now - $launch_time;
+	$mins = floor ($delta / 60);
+	$secs = $delta - $mins * 60;
+
+	$launch_str = strftime ("%Y-%m-%d %H:%M:%S %z", $launch_time);
+	printf ("%s boot msg: %s [launched %s, %d secs, %d:%02d mins]\n",
+		strftime ("%Y-%m-%d %H:%M:%S %z", $now),
+		$msg,
+		$launch_str,
+		$delta,
+		$mins, $secs);
+
+	if (($db = get_slimstk_db ()) != NULL) {
+		$boot_log_id = get_seq ($db);
+		query_db ($db,
+			  "insert into boot_log (boot_log_id, record_time,"
+			  ."  instance_id, launch_time, boot_secs, msg"
+			  .") values (?,current_timestamp,?,?,?,?)",
+			  array ($boot_log_id, $instance_id, $launch_str,
+				 $delta, $msg));
+		do_commits ();
 	}
 }

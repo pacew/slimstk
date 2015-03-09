@@ -1,9 +1,6 @@
 <?php
 
-/* tz will be system timezone for unbuntu, UTC for aws */
-if (($tz = trim (@file_get_contents ("/etc/timezone"))) == "")
-	$tz = "UTC";
-date_default_timezone_set ($tz);
+date_default_timezone_set ("UTC");
 
 $slimstk = NULL;
 

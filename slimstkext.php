@@ -119,6 +119,7 @@ function make_db_connection ($dbparams = NULL) {
 				array (PDO::MYSQL_ATTR_INIT_COMMAND
 				       => "set names 'utf8'"));
 		$pdo->exec ("set character set utf8");
+		$pdo->exec ("set session time_zone = '+00:00'");
 	} catch (Exception $e) {
 		printf ("db connect error %s\n", $e->getMessage ());
 		return (NULL);
@@ -373,18 +374,19 @@ function clrsess () {
 	}
 }
 
-function get_seq () {
-	$q = query ("select lastval"
-		    ." from seq"
-		    ." limit 1");
+function get_seq ($db = NULL) {
+	$q = query_db ($db,
+		       "select lastval"
+		       ." from seq"
+		       ." limit 1");
 	if (($r = fetch ($q)) == NULL) {
 		$newval = 100;
-		query ("insert into seq (lastval) values (?)",
-		       $newval);
+		query_db ($db, "insert into seq (lastval) values (?)",
+			  $newval);
 	} else {
 		$newval = 1 + intval ($r->lastval);
-		query ("update seq set lastval = ?",
-		       $newval);
+		query_db ($db, "update seq set lastval = ?",
+			  $newval);
 	}
 	return ($newval);
 }
