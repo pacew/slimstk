@@ -72,7 +72,9 @@ $base_pkgs = array (
 	"aws-cli",
 	"git",
 	"mod_ssl",
-	"php-pecl-xdebug"
+	"php-pecl-xdebug",
+	"nodejs",
+	"npm"
 	);
 
 function make_boot_script ($boot) {
@@ -112,7 +114,8 @@ function make_boot_script ($boot) {
 
 	$ret .= "yum update -y\n";
 	$ret .= "date\n";
-	$ret .= sprintf ("yum install -y %s\n", implode (" ", $boot['pkgs']));
+	$ret .= sprintf ("yum install --enable-repo=epel -y %s\n",
+			 implode (" ", $boot['pkgs']));
 	$ret .= "date\n";
 
 	$boot_tar = basename ($boot['boot_s3']);
