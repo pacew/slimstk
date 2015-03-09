@@ -114,7 +114,7 @@ function make_boot_script ($boot) {
 
 	$ret .= "yum update -y\n";
 	$ret .= "date\n";
-	$ret .= sprintf ("yum install --enable-repo=epel -y %s\n",
+	$ret .= sprintf ("yum install --enablerepo=epel -y %s\n",
 			 implode (" ", $boot['pkgs']));
 	$ret .= "date\n";
 
@@ -381,7 +381,7 @@ if ($asg == NULL) {
 	$args[] = "--health-check-type";
 	$args[] = "ELB";
 	$args[] = "--health-check-grace-period";
-	$args[] = "90";
+	$args[] = "120";
 	slimstk_aws ($args);
 	$asg = get_autoscaling_group ();
 }
