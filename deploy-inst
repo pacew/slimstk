@@ -18,7 +18,7 @@ cd ${deploy_dir}
 dest_name=`cat dname`
 
 dest_dir=/home/ec2-user/${dest_name}
-mkdir -p ${destdir}
+mkdir -p ${dest_dir}
 
 tar -C ${dest_dir} -xf app.tar
 cp commit ${dest_dir}/website/.
@@ -34,6 +34,5 @@ fi
 sh ${deploy_dir}/tagcmd
 
 siteid=`echo $dest_name | sed 's/[.].*//'`
-rm -f ${siteid}
-ln -s ${dest_name} ${siteid}
+ln -sf ${dest_name} /home/ec2-user/${siteid}
 

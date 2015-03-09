@@ -157,15 +157,14 @@ system ("date");
 system ("sudo /tmp/codedeploy-install auto");
 system ("date");
 
-if (0) {
-	printf ("since codedeploy-install doesn't sleep any more,"
-		." sleeping here...\n");
-	sleep (3 * 60);
-	printf ("running asg-cycle to kill stales inst(s)\n");
+if (1) {
+	printf ("scheduling asg-cycle to kill stale inst(s)\n");
+	$outf = popen ("at 'now+5minutes'", "w");
 	$cmd = sprintf ("/opt/slimstk/asg-cycle %s %s",
 			escapeshellarg ($slimstk['confdir']),
 			escapeshellarg ($stkname));
-	system ($cmd);
+	fwrite ($outf, $cmd);
+	pclose ($outf);
 }
 
 printf ("slimstk boot done\n");
