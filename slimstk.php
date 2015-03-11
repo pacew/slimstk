@@ -112,7 +112,7 @@ function prettyprint_json ($json) {
 function slimstk_aws ($args, $ignore_errors = 0, $json_decode = 1) {
 	global $slimstk;
 
-	$cmd = "aws";
+	$cmd = "PATH=\$PATH:/usr/local/bin aws";
 
 	if (@$slimstk['current_region']) {
 		$cmd .= sprintf (" --region %s",
@@ -122,9 +122,14 @@ function slimstk_aws ($args, $ignore_errors = 0, $json_decode = 1) {
 	foreach ($args as $arg) {
 		$cmd .= " " . escapeshellarg ($arg);
 	}
-	if ($ignore_errors)
+	if ($ignore_errors) {
 		$cmd .= " 2> /dev/null";
-	printf ("running: %s\n", $cmd);
+	} else {
+		$cmd .= " 2>&1";
+	}
+	if (! $slimstk['for_webpage']) {
+		printf ("running: %s\n", $cmd);
+	}
 	exec ($cmd, $arr, $rc);
 	$output = implode ("\n", $arr);
 

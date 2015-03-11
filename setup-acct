@@ -909,22 +909,24 @@ function setup_webserver_user () {
 			}
 		}
 	}
-	$resources = array ();
+	$resources_top = array ();
+	$resources_files = array ();
 	foreach ($buckets as $bucket => $dummy) {
-		$resources[] = sprintf ("arn:aws:s3:::%s/*", $bucket);
+		$resources_top[] = sprintf ("arn:aws:s3:::%s", $bucket);
+		$resources_files[] = sprintf ("arn:aws:s3:::%s/*", $bucket);
 	}
+
+	$stmts = array ();
+	$stmts[] = array ("Effect" => "Allow",
+			  "Action" => array ("s3:List*"),
+			  "Resource" => $resources_top);
+	$stmts[] = array ("Effect" => "Allow",
+			  "Action" => array ("s3:*"),
+			  "Resource" => $resources_files);
 
 	$policy_doc = array (
 		"Version" => "2012-10-17",
-		"Statement" => array (
-			array (
-				"Effect" => "Allow",
-				"Action" => array ("s3:*"),
-				"Resource" => $resources
-				)
-			)
-		);
-
+		"Statement" => $stmts);
 
 	$args = array ("iam", "list-users");
 	$val = slimstk_aws ($args);
