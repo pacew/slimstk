@@ -574,3 +574,4 @@ function slimstk_boot_msg ($msg) {
 		do_commits ();
 	}
 }
+

@@ -41,41 +41,6 @@ function slimstk_putvar_region ($key, $val) {
 	return (slimstk_putvar ($full_key, $val));
 }
 
-function slimstk_aws ($args, $ignore_errors = 0, $json_decode = 1) {
-	global $slimstk;
-
-	$cmd = "aws";
-
-	if (@$slimstk['current_region']) {
-		$cmd .= sprintf (" --region %s",
-				 escapeshellarg ($slimstk['current_region']));
-	}
-
-	foreach ($args as $arg) {
-		$cmd .= " " . escapeshellarg ($arg);
-	}
-	if ($ignore_errors)
-		$cmd .= " 2> /dev/null";
-	printf ("running: %s\n", $cmd);
-	exec ($cmd, $arr, $rc);
-	$output = implode ("\n", $arr);
-
-	if ($rc != 0) {
-		if ($ignore_errors) {
-			return (NULL);
-		} else {
-			printf ("error running: %s\n", $cmd);
-			printf ("%s\n", $output);
-			exit (1);
-		}
-	}
-
-	if ($json_decode)
-		return (json_decode ($output, true));
-
-	return ($output);
-}
-
 function slimstk_err ($errno, $errstr, $errfile, $errline, $errcontext) {
 	if (! error_reporting ())
 		return (FALSE);

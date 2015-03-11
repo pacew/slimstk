@@ -99,13 +99,57 @@ function slimstk_get_aws_param ($path) {
 
 function prettyprint_json ($json) {
 	$tname = tempnam ("/tmp", "jq.");
-	file_put_contents ($tname, json_encode ($json));
-	$cmd = sprintf ("jq . < %s", $tname);
+	$json_encoded = json_encode ($json);
+	file_put_contents ($tname, $json_encoded);
+	$cmd = sprintf ("jq . < %s 2> /dev/null", $tname);
 	$ret = shell_exec ($cmd);
 	unlink ($tname);
+	if (trim ($ret) == "")
+		$ret = $json_encoded;
 	return ($ret);
 }
 
+function slimstk_aws ($args, $ignore_errors = 0, $json_decode = 1) {
+	global $slimstk;
 
-	
+	$cmd = "aws";
 
+	if (@$slimstk['current_region']) {
+		$cmd .= sprintf (" --region %s",
+				 escapeshellarg ($slimstk['current_region']));
+	}
+
+	foreach ($args as $arg) {
+		$cmd .= " " . escapeshellarg ($arg);
+	}
+	if ($ignore_errors)
+		$cmd .= " 2> /dev/null";
+	printf ("running: %s\n", $cmd);
+	exec ($cmd, $arr, $rc);
+	$output = implode ("\n", $arr);
+
+	if ($rc != 0) {
+		if ($ignore_errors) {
+			return (NULL);
+		} else {
+			printf ("error %d running: %s\n", $rc, $cmd);
+			printf ("%s\n", $output);
+			exit (1);
+		}
+	}
+
+	if ($json_decode)
+		return (json_decode ($output, true));
+
+	return ($output);
+}
+
+function slimstk_bucket_exists ($bucket) {
+	$args = array ("s3api", "list-buckets");
+	$val = slimstk_aws ($args);
+	foreach ($val['Buckets'] as $binfo) {
+		if (strcmp ($binfo['Name'], $bucket) == 0)
+			return (1);
+	}
+	return (0);
+}

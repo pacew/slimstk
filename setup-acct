@@ -507,29 +507,32 @@ function setup_kms ($region) {
 	}
 }
 
+function maybe_create_bucket ($bucket) {
+	if (preg_match ('/[^-.a-z0-9]/', $bucket)) {
+		printf ("illegal character in bucket name: %s\n",
+			$bucket);
+		exit (1);
+	}
+
+	if (! slimstk_bucket_exists ($bucket)) {
+		printf ("making bucket %s\n", $bucket);
+		$args = array ("s3api", "create-bucket");
+		$args[] = "--bucket";
+		$args[] = $bucket;
+		slimstk_aws ($args);
+	}
+}
+
 function setup_s3 () {
 	global $slimstk;
 
 	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-		if (preg_match ('/[^-.a-z0-9]/', $stkinfo['bucket'])) {
-			printf ("illegal character in bucket name: %s\n",
-				$stkinfo['bucket']);
-			exit (1);
-		}
-
-		$bucket = sprintf ("s3://%s", $stkinfo['bucket']);
-
-		$cmd = sprintf ("aws s3 ls %s > /dev/null 2>&1",
-				escapeshellarg ($bucket));
-		system ($cmd, $rc);
-		if ($rc != 0) {
-			printf ("making bucket %s\n", $bucket);
-			$cmd = sprintf ("aws s3 mb %s",
-					escapeshellarg ($bucket));
-			system ($cmd, $rc);
-			if ($rc != 0) {
-				printf ("error making bucket %s\n", $bucket);
-				exit (1);
+		maybe_create_bucket ($stkinfo['bucket']);
+		
+		foreach ($stkinfo['sites'] as $siteid => $sinfo) {
+			$bucket = @$sinfo['priv_files_bucket'];
+			if ($bucket) {
+				maybe_create_bucket ($bucket);
 			}
 		}
 	}
@@ -893,7 +896,78 @@ function check_codedeploy () {
 	}
 }
 
+function setup_webserver_user () {
+	global $slimstk;
+
+	$user = "webserver";
+	$policy_name = "webserver-policy";
+
+	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+		foreach ($stkinfo['sites'] as $siteid => $sinfo) {
+			if (($bucket = @$sinfo['priv_files_bucket']) != "") {
+				$buckets[$bucket] = 1;
+			}
+		}
+	}
+	$resources = array ();
+	foreach ($buckets as $bucket => $dummy) {
+		$resources[] = sprintf ("arn:aws:s3:::%s/*", $bucket);
+	}
+
+	$policy_doc = array (
+		"Version" => "2012-10-17",
+		"Statement" => array (
+			array (
+				"Effect" => "Allow",
+				"Action" => array ("s3:*"),
+				"Resource" => $resources
+				)
+			)
+		);
+
+
+	$args = array ("iam", "list-users");
+	$val = slimstk_aws ($args);
+	$found = 0;
+	foreach ($val['Users'] as $uinfo) {
+		if (strcmp ($uinfo['UserName'], $user) == 0) {
+			$found = 1;
+			break;
+		}
+	}
+
+	if (! $found) {
+		$args = array ("iam", "create-user");
+		$args[] = "--user-name";
+		$args[] = $user;
+		slimstk_aws ($args);
+	}
+
+	$args = array ("iam", "get-user-policy");
+	$args[] = "--user-name";
+	$args[] = $user;
+	$args[] = "--policy-name";
+	$args[] = $policy_name;
+	$val = slimstk_aws ($args);
+	
+	$existing_doc = $val['PolicyDocument'];
+
+	if (! equal_json ($existing_doc, $policy_doc)) {
+		$args = array ("iam", "put-user-policy");
+		$args[] = "--user-name";
+		$args[] = $user;
+		$args[] = "--policy-name";
+		$args[] = $policy_name;
+		$args[] = "--policy-document";
+		$args[] = prettyprint_json ($policy_doc);
+		slimstk_aws ($args);
+	}
+}
+
+
 /* ================================================================ */
+setup_webserver_user ();
+
 setup_instance_profile ();
 
 setup_codedeploy ();
