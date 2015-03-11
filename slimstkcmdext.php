@@ -578,3 +578,52 @@ function slimstk_boot_msg ($msg) {
 	}
 }
 
+function slimstk_setup_aws_webserver_access () {
+	global $slimstk;
+
+	if ($slimstk['running_on_aws'])
+		retUrn;
+
+	$user = $_SERVER['USER'];
+	$admin_flag = 0;
+	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+		foreach ($stkinfo['admins'] as $admin) {
+			if (strcmp ($admin, $user) == 0) {
+				$admin_flag = 1;
+				break;
+			}
+		}
+	}
+
+	if ($admin_flag == 0)
+		return;
+
+	$key_name = sprintf ("access-key-%s-webserver",
+			     $slimstk['aws_acct_name']);
+
+	$clear_name = sprintf ("%s/%s", $slimstk['apache_dir'], $key_name);
+	if (file_exists ($clear_name))
+		return;
+
+	$gpg_name = sprintf ("%s/%s.gpg", $slimstk['confdir'], $key_name);
+
+	if (! file_exists ($gpg_name))
+		return;
+
+	$cmd = sprintf ("gpg --quiet --decrypt --output - %s",
+			escapeshellarg ($gpg_name));
+	$cleartext = trim (shell_exec ($cmd));
+
+	$cmd1 = sprintf ("umask 077; cat > %s; chown %s %s",
+			 escapeshellarg ($clear_name),
+			 escapeshellarg ($slimstk['apache_user']),
+			 escapeshellarg ($clear_name));
+	$cmd2 = sprintf ("sudo sh -c %s", escapeshellarg ($cmd1));
+
+	if (($outf = popen ($cmd2, "w")) == NULL) {
+		printf ("error running %s\n", $cmd2);
+		exit (1);
+	}
+	fwrite ($outf, $cleartext."\n");
+	pclose ($outf);
+}
