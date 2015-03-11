@@ -256,6 +256,9 @@ function slimstk_apache_config ($global_args) {
 		unset ($config['ssl_port']);
 	}
 
+	
+
+	/* ================================================================ */
 	$apache_conf = "";
 
 	$apache_conf .= sprintf ("<Directory %s/website>\n", getcwd ());

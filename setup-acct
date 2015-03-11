@@ -962,6 +962,50 @@ function setup_webserver_user () {
 		$args[] = prettyprint_json ($policy_doc);
 		slimstk_aws ($args);
 	}
+
+	$admins_keys = array ();
+	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+		foreach ($stkinfo['admins'] as $admin) {
+			if (! isset ($admin_keys[$admin])) {
+				$admin_keys[$admin]
+					= slimstk_get_gpg_id ($admin);
+			}
+		}
+	}
+
+	$gpg_name = sprintf ("%s/access-key-%s-webserver.gpg",
+				    $slimstk['confdir'],
+				    $slimstk['aws_acct_name']);
+	if (! file_exists ($gpg_name)) {
+		printf ("need access_key for webserver on %s\n",
+			$slimstk['aws_acct_name']);
+
+		printf ("access_key_id: ");
+		$access_key_id = trim (slimstk_gets ());
+		printf ("secret_access_key: ");
+		$secret_access_key = trim (slimstk_gets ());
+	
+		$text = sprintf ("[%s-webserver]\n", $slimstk['aws_acct_name']);
+		$text .= sprintf ("aws_access_key_id = %s\n", $access_key_id);
+		$text .= sprintf ("aws_secret_access_key = %s\n",
+				  $secret_access_key);
+	
+		$cmd = sprintf ("gpg --encrypt --output %s",
+				escapeshellarg ($gpg_name));
+		foreach ($admin_keys as $gpg_id) {
+			$cmd .= sprintf (" --recipient %s",
+					 escapeshellarg ($gpg_id));
+		}
+		printf ("%s\n", $cmd);
+
+		$f = popen ($cmd, "w");
+		fwrite ($f, $text);
+		pclose ($f);
+		if (@filesize ($gpg_name) == 0) {
+			printf ("error storing %s\n", $gpg_name);
+			exit (1);
+		}
+	}
 }
 
 
