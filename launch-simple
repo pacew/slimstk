@@ -101,7 +101,8 @@ foreach ($users as $user) {
 $boot['authorized_keys'] = $authorized_keys;
 
 $pkgs = array ("emacs",
-	       "python-pip"
+	       "python-pip",
+	       "git"
 	);
 $boot['pkgs'] = $pkgs;
 
@@ -117,33 +118,6 @@ if (strlen ($user_data) > 16*1024) {
 	exit (1);
 }
 
-
-$keypair_name = $_SERVER['USER'];
-
-$args = array ("ec2", "describe-key-pairs");
-$val = slimstk_aws ($args);
-$found = 0;
-foreach ($val['KeyPairs'] as $keypair) {
-	if (strcmp ($keypair['KeyName'], $keypair_name) == 0) {
-		$found = 1;
-		break;
-	}
-}
-
-if ($found == 0) {
-	$pubkey = sprintf ("%s/.ssh/id_rsa.pub", $_SERVER['HOME']);
-	if (! file_exists ($pubkey)) {
-		printf ("can't make key, %s does not exit\n", $pubkey);
-		exit (1);
-	}
-
-	$args = array ("ec2", "import-key-pair");
-	$args[] = "--key-name";
-	$args[] = $keypair_name;
-	$args[] = "--public-key-material";
-	$args[] = sprintf ("file://%s", $pubkey);
-	$val = slimstk_aws ($args);
-}
 
 $args = array ("iam", "list-instance-profiles");
 $val = slimstk_aws ($args);
@@ -163,8 +137,6 @@ if (! $found) {
 $args = array ("ec2", "run-instances");
 $args[] = "--image-id";
 $args[] = $image_id;
-//$args[] = "--key-name";
-//$args[] = $keypair_name;
 $args[] = "--security-group-ids";
 $args[] = $sgext_groupid;
 $args[] = "--user-data";
