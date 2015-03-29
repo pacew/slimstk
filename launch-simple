@@ -1,0 +1,197 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+$argv = $_SERVER['argv'];
+
+if (($inst_name = trim (@$argv[1])) == "") {
+	printf ("usage: launch-simple name\n");
+	exit (1);
+}
+
+$client_token = $inst_name;
+
+$fname = sprintf ("%s/.aws/current-confdir", $_SERVER['HOME']);
+$confdir = trim (@file_get_contents ($fname));
+if ($confdir == "") {
+	printf ("can't find confdir .. you need to run slimstk-login\n");
+	exit (1);
+}
+putenv ("confdir=".$confdir);
+$_SERVER['confdir'] = $confdir;
+
+
+require_once ("/opt/slimstk/slimstkcmd.php");
+slimstk_init ();
+
+/* http://cloud-images.ubuntu.com/locator/ec2/	
+ * search for us-east-1 hvm:ebs amd64
+ */
+$image_id = "ami-dcfaa6b4";
+$instance_type = "m3.medium";
+$region = "us-east-1";
+
+slimstk_set_region ($region);
+
+$sgext_groupid = slimstk_getvar_region ("sgext.groupid");
+$subnet_ids = json_decode (slimstk_getvar_region ("subnet_ids"), true);
+$subnet_id = $subnet_ids[0];
+
+$profile_name = "inst-profile";
+
+function make_boot_script ($boot) {
+	global $alternative_ssh_port;
+	/*
+	 * 
+	 * stdout and stderr go to /var/log/cloud-init-output.log
+	 *
+	 * if it exists with an error, it is noted in the log but
+	 * apparently has no other effect
+	 */
+	$ret = "#! /bin/sh -x\n";
+	$ret .= "exec > /var/log/launch-simple 2>&1\n";
+	$ret .= "echo 'launch-simple startup'\n";
+	$ret .= "date\n";
+
+	/* change to alternative ssh port */
+	global $alternative_ssh_port;
+	$ret .= sprintf ("(echo '/^Port 22.*/s/.*/Port %d/'; echo 'w')"
+			 ." | ed /etc/ssh/sshd_config\n",
+			 $alternative_ssh_port);
+	$ret .= "service ssh restart\n";
+
+	$ret .= "mkdir -p /home/ubuntu/.ssh\n";
+	$ret .= "cat > /home/ubuntu/.ssh/authorized_keys <<EOF\n";
+	$ret .= $boot['authorized_keys'];
+	$ret .= "EOF\n";
+	$ret .= "chown -R ubuntu:ubuntu /home/ubuntu/.ssh\n";
+	$ret .= "chmod -R go-rwx /home/ubuntu/.ssh\n";
+
+	$ret .= "apt-get update\n";
+	$ret .= "date\n";
+	$ret .= sprintf ("apt-get --yes install %s\n",
+			 implode (" ", $boot['pkgs']));
+	$ret .= "date\n";
+
+	$ret .= "pip install awscli\n";
+
+	$ret .= "echo 'launch-simple done'\n";
+	$ret .= "date\n";
+
+	return ($ret);
+}
+
+$boot = array ();
+
+$users = array ();
+foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	foreach ($stkinfo['admins'] as $name) {
+		$users[$name] = 1;
+	}
+}
+$users = array_keys ($users);
+$authorized_keys = "";
+foreach ($users as $user) {
+	$src = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $user);
+	if (! file_exists ($src)) {
+		printf ("%s is missing\n", $src);
+		exit (1);
+	}
+	$authorized_keys .= trim (file_get_contents ($src))."\n";
+}
+$boot['authorized_keys'] = $authorized_keys;
+
+$pkgs = array ("emacs",
+	       "python-pip"
+	);
+$boot['pkgs'] = $pkgs;
+
+
+$prog = "#! /bin/sh\n";
+$prog .= "echo 'launch-simple start'\n";
+$prog .= "echo 'launch-simple errors >&2\n"; 
+$prog .= "date > /tmp/user-data\n";
+
+$user_data = make_boot_script ($boot);
+if (strlen ($user_data) > 16*1024) {
+	printf ("user_data overflow\n");
+	exit (1);
+}
+
+
+$keypair_name = $_SERVER['USER'];
+
+$args = array ("ec2", "describe-key-pairs");
+$val = slimstk_aws ($args);
+$found = 0;
+foreach ($val['KeyPairs'] as $keypair) {
+	if (strcmp ($keypair['KeyName'], $keypair_name) == 0) {
+		$found = 1;
+		break;
+	}
+}
+
+if ($found == 0) {
+	$pubkey = sprintf ("%s/.ssh/id_rsa.pub", $_SERVER['HOME']);
+	if (! file_exists ($pubkey)) {
+		printf ("can't make key, %s does not exit\n", $pubkey);
+		exit (1);
+	}
+
+	$args = array ("ec2", "import-key-pair");
+	$args[] = "--key-name";
+	$args[] = $keypair_name;
+	$args[] = "--public-key-material";
+	$args[] = sprintf ("file://%s", $pubkey);
+	$val = slimstk_aws ($args);
+}
+
+$args = array ("iam", "list-instance-profiles");
+$val = slimstk_aws ($args);
+$found = 0;
+foreach ($val['InstanceProfiles'] as $prof) {
+	if (strcmp ($prof['InstanceProfileName'], $profile_name) == 0) {
+		$found = 1;
+		$profile_arn = $prof['Arn'];
+	}
+}
+
+if (! $found) {
+	printf ("can't find instance profile %s\n", $profile_name);
+	exit (1);
+}
+
+$args = array ("ec2", "run-instances");
+$args[] = "--image-id";
+$args[] = $image_id;
+//$args[] = "--key-name";
+//$args[] = $keypair_name;
+$args[] = "--security-group-ids";
+$args[] = $sgext_groupid;
+$args[] = "--user-data";
+$args[] = $user_data;
+$args[] = "--instance-type";
+$args[] = $instance_type;
+$args[] = "--subnet-id";
+$args[] = $subnet_id;
+if (0) {
+	$args[] = "--client-token";
+	$args[] = $client_token;
+}
+$args[] = "--iam-instance-profile";
+$args[] = json_encode (array ("Name" => $profile_name));
+$args[] = "--associate-public-ip-address";
+$val = slimstk_aws ($args);
+foreach ($val['Instances'] as $inst) {
+	$instance_id = $inst['InstanceId'];
+	
+	$tags = array ();
+	$tags[] = array ("Key" => "slimstk_name",
+			 "Value" => $inst_name);
+
+	$args = array ("ec2", "create-tags");
+	$args[] = "--resources";
+	$args[] = $instance_id;
+	$args[] = "--tags";
+	$args[] = json_encode ($tags);
+	slimstk_aws ($args);
+}

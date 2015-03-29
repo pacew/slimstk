@@ -101,5 +101,8 @@ foreach ($creds as $profile => $item) {
 fclose ($outf);
 rename ($tname, $credfile);
 
+$fname = sprintf ("%s/current-confdir", $awsdir);
+file_put_contents ($fname, $confdir . "\n");
+
 printf ("ready to use aws account %s\n", $aws_acct_name);
 printf ("export AWS_DEFAULT_PROFILE=%s\n", $login_profile);

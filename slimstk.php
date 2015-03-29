@@ -45,9 +45,10 @@ function slimstk_init_common () {
 	}
 
 	if ($confdir == "") {
-		printf ("can't find confdir\n"
-			." you need to give --confdir=DIR or"
-			." run slimstk-login\n");
+		printf ("can't find confdir, you need to do one of:\n"
+			." add --confdir=DIR\n"
+			." run slimstk-login\n"
+			." run git config slimstk.confdir DIR\n");
 		exit (1);
 	}
 
