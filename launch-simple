@@ -106,18 +106,11 @@ $pkgs = array ("emacs",
 	);
 $boot['pkgs'] = $pkgs;
 
-
-$prog = "#! /bin/sh\n";
-$prog .= "echo 'launch-simple start'\n";
-$prog .= "echo 'launch-simple errors >&2\n"; 
-$prog .= "date > /tmp/user-data\n";
-
 $user_data = make_boot_script ($boot);
 if (strlen ($user_data) > 16*1024) {
 	printf ("user_data overflow\n");
 	exit (1);
 }
-
 
 $args = array ("iam", "list-instance-profiles");
 $val = slimstk_aws ($args);

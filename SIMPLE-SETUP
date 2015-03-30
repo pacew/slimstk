@@ -1,0 +1,15 @@
+put public IP in route53 apebble.net
+
+scp -p ~/.ssh/id_dsa server:.ssh/
+ssh server
+
+adduser -u 1119 pace
+adduser pace admin
+
+
+
+apt-get install build-essential
+
+git clone v1.apebble.com:/home/fs/git/tools
+cd tools
+make
