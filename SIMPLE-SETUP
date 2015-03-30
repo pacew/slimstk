@@ -3,8 +3,17 @@ put public IP in route53 apebble.net
 scp -p ~/.ssh/id_dsa server:.ssh/
 ssh server
 
+hostname test.apebble.net
+
+
 adduser -u 1119 pace
 adduser pace admin
+
+mkdir -p /home/pace/.ssh
+cp .ssh/authorized_keys* /home/pace/.ssh/
+chown -R pace:pace /home/pace/.ssh
+chmod 700 /home/pace/.ssh
+
 
 apt-get install build-essential
 
@@ -15,11 +24,9 @@ $ ./local-setup
 logout login
 ssh-add
 
-hostname test.apebble.net
-
-./host-setup server
+./host-setup aws
 ./getcred alipes-devel
-./host-setup -a 1 server
+./host-setup -a 1 aws
 
 
 
