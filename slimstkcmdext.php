@@ -627,3 +627,84 @@ function slimstk_setup_aws_webserver_access () {
 	fwrite ($outf, $cleartext."\n");
 	pclose ($outf);
 }
+
+
+function slimstk_make_nightly_cron_spec () {
+	global $slimstk;
+
+	/*
+	 * generate a number nicely distributed between 0 and 1,
+	 * unique to this server
+	 */
+	if ($slimstk['running_on_aws']) {
+		$instance_id = slimstk_get_aws_param("/meta-data/instance-id");
+	} else {
+		$instance_id = gethostname ();
+	}
+	$num = (0.0 + hexdec (substr (md5 ($instance_id), 0, 6)))
+		/ 0x1000000;
+
+	$start_hour = 3; /* safe from DST weirdness */
+	$end_hour = 6;
+	$slot_time_secs = 20 * 60;
+	$offset_minutes = 4;
+
+	$nslots = ($end_hour - $start_hour) * 3600 / $slot_time_secs;
+
+	$myslot = floor ($num * $nslots);
+
+	$start_secs = $start_hour * 3600 + $myslot * $slot_time_secs;
+	$hr = floor ($start_secs / 3600);
+	$min = floor (($start_secs - $hr * 3600) / 60);
+
+	$cronspec = sprintf ("%d %d * * *", $min + $offset_minutes, $hr);
+
+	return ($cronspec);
+}
+
+function slimstk_install_site ($args = NULL) {
+	global $slimstk;
+
+	$config = slimstk_apache_config ($args);
+
+	slimstk_setup_db ();
+
+	$dir = $slimstk['tmpdir'];
+	system ("sudo mkdir -p $dir");
+	system (sprintf ("sudo chgrp %s $dir", $slimstk['apache_user']));
+	system ("sudo chmod 2775 $dir");
+
+	if (file_exists ("schema.php")) {
+		require_once ("schema.php");
+		dbpatch (NULL, $schema);
+	}
+
+	if (file_exists ("nightly") && $slimstk['running_on_aws']) {
+		$cwd = getcwd ();
+		$user = "ec2-user";
+		$cronspec = slimstk_make_nightly_cron_spec ();
+		
+		$cron = sprintf ("USER=%s\n"
+				 ."PATH=%s\n"
+				 ."TERM=linux\n"
+				 ."%s %s"
+				 ." cd %s ; %s/nightly"
+				 ."  >>/tmp/%s-nightly.log 2>&1\n",
+				 $user,
+				 $_SERVER['PATH'],
+				 $cronspec, $user, $cwd, $cwd, $siteid);
+		file_put_contents ("TMP.cron", $cron);
+		$target = sprintf ("/etc/cron.d/%s-nightly", $siteid);
+		$cmd = sprintf ("sudo cp TMP.cron %s", $target);
+		system ($cmd);
+	}
+
+	if (! file_exists ("website"))
+		mkdir ("website");
+
+	slimstk_activate_apache_conf ($config);
+
+	printf ("%s\n", $config['site_url']);
+	if (isset ($config['ssl_url']))
+		printf ("%s\n", $config['ssl_url']);
+}
