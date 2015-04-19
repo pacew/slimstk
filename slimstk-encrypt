@@ -1,0 +1,105 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/opt/slimstk/slimstkcmd.php");
+slimstk_init ();
+
+function usage () {
+	printf ("usage: slimstk encrypt infile [outdir]\n");
+	exit (1);
+}
+
+$argv = $_SERVER['argv'];
+
+$inname = @$argv[1];
+$outdir = @$argv[2];
+
+if ($inname == "")
+	usage ();
+
+if ($outdir == "")
+	$outdir = ".";
+
+$indata = @file_get_contents ($inname);
+if ($indata == "") {
+	printf ("error reading %s\n", $inname);
+	exit (1);
+}
+
+$users = array_keys ($slimstk['users']);
+
+$symkey_clear = openssl_random_pseudo_bytes (16);
+$iv = openssl_random_pseudo_bytes (16);
+
+printf ("TEST key\n");
+$symkey_clear = "foo";
+
+$hdrs = sprintf ("-iv %s\n", base64_encode ($iv));
+foreach ($users as $user) {
+	$pubkey_file = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $user);
+	if ($user == "pace")
+		$pubkey_file = "/home/pace/.ssh/id_rsa.pub";
+	if (! file_exists ($pubkey_file)) {
+		printf ("%s does not exist\n", $pubkey_file);
+		exit (1);
+	}
+
+	$cmd = sprintf ("ssh-keygen -e -f %s -m pkcs8",
+			escapeshellarg ($pubkey_file));
+	$pubkey = shell_exec ($cmd);
+	$pubkey_resource = openssl_get_publickey ($pubkey);
+
+	/* openssl rsautl -encrypt -inkey id_rsa.pub -pubin -in f1 -out f2 */
+	openssl_public_encrypt ($symkey_clear, $symkey_cipher,
+				$pubkey_resource);
+
+	printf ("symkey_cipher len = %d\n", strlen ($symkey_cipher));
+
+	$hdrs .= sprintf ("%s %s\n", $user, base64_encode ($symkey_cipher));
+}
+
+$outname = sprintf ("%s/%s.enc", $outdir, $inname, $user);
+$outf = fopen ($outname, "w");
+fwrite ($outf, $hdrs);
+fwrite ($outf, "\n");
+fwrite ($outf, openssl_encrypt ($indata, "aes-256-cbc", $symkey_clear, 0, $iv));
+fclose ($outf);
+
+function slimstk_dev_decrypt ($enc_name) {
+	if (($inf = fopen ($enc_name, "r")) == NULL)
+		return (NULL);
+	$symkey_cipher = NULL;
+	$iv = NULL;
+	while (($hdr = trim (fgets ($inf))) != "") {
+		$arr = explode (" ", $hdr);
+		$user = $arr[0];
+		if (strcmp ($user, "-iv") == 0) {
+			$iv = base64_decode ($arr[1]);
+		} else if (strcmp ($user, $_SERVER['USER']) == 0) {
+			$symkey_cipher = base64_decode ($arr[1]);
+		}
+	}
+	
+	$cipher = fread ($inf, 10000);
+	fclose ($inf);
+	
+	if ($symkey_cipher == NULL || $iv == NULL)
+		return (NULL);
+
+	$privkey_file = sprintf ("%s/.ssh/id_rsa", $_SERVER['HOME']);
+	$privkey_resource = openssl_get_privatekey ("file://".$privkey_file);
+
+	/* openssl rsautl -decrypt -inkey id_rsa -in file1 -out file2 */
+	openssl_private_decrypt ($symkey_cipher, $symkey_clear,
+				 $privkey_resource);
+
+	$clear = openssl_decrypt ($cipher, "aes-256-cbc",
+				  $symkey_clear, 0, $iv);
+
+	return ($clear);
+}
+
+$clear = slimstk_dev_decrypt ($outname);
+echo ($clear);
+
+
