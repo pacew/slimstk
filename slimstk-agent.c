@@ -370,6 +370,13 @@ done:
 }
 
 int
+pw_callback (char *buf, int size, int rwflag, void *userdata)
+{
+	printf ("callback\n");
+	exit(0);
+}
+
+int
 main (int argc, char **argv)
 {
 	int c;
@@ -377,6 +384,7 @@ main (int argc, char **argv)
 	FILE *inf;
 	int n;
 	struct secmem *secmem;
+	char *p;
 
 	while ((c = getopt (argc, argv, "")) != EOF) {
 		switch (c) {
@@ -394,6 +402,44 @@ main (int argc, char **argv)
 	secmem->id_rsa_cipher = make_secbuf (8192);
 	secmem->secmem_key = make_secbuf (128 / 8);
 	secmem->secmem_iv = make_secbuf (128 / 8);
+
+	char fname[1000];
+	sprintf (fname, "%s/.ssh/id_rsa", getenv ("HOME"));
+	if ((inf = fopen (fname, "r")) == NULL) {
+		printf ("can't open %s\n", fname);
+		exit (1);
+	}
+
+	EVP_PKEY *pkey;
+
+	OpenSSL_add_all_ciphers ();
+
+	pkey = NULL;
+	pkey = PEM_read_PrivateKey(inf, &pkey, pw_callback, "foobar");
+	if (pkey == NULL) {
+		printf ("error getting private key\n");
+		exit (1);
+	}
+	printf ("pkey %p\n", pkey);
+
+	BIO *bio;
+	bio = BIO_new (BIO_s_mem ());
+	printf ("bio %p\n", bio);
+
+	int rc;
+	rc = PEM_write_bio_PKCS8PrivateKey (bio, pkey,
+					    NULL, NULL, 0, NULL, NULL);
+	if (rc <= 0) {
+		printf ("error setting up private key\n");
+		exit (1);
+	}
+
+	n = BIO_get_mem_data (bio, &p);
+	printf ("mem %d\n", n);
+	dump (p, n);
+
+	exit (0);
+
 
 	snprintf (cmd, sizeof cmd,
 		  "openssl rsa -in %s/.ssh/id_rsa -outform PEM",
