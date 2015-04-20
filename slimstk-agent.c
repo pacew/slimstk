@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -8,6 +10,8 @@
 
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <openssl/bio.h>
 #include <openssl/aes.h>
@@ -58,6 +62,8 @@ struct secmem {
 	struct secbuf *secmem_key;
 	struct secbuf *secmem_iv;
 };
+
+void run_server (struct secmem *secmem);
 
 void
 usage (void)
@@ -132,15 +138,13 @@ make_secbuf (size_t size)
 void
 wipe_privkey (struct secmem *secmem)
 {
-	memset (secmem->id_rsa_clear->buf, 0, secmem->id_rsa_clear->used);
-	secmem->id_rsa_clear->used = 0;
+	memset (secmem->id_rsa_clear->buf, 0, secmem->id_rsa_clear->avail);
 }
 
 void
 encrypt_privkey (struct secmem *secmem)
 {
 	AES_KEY aes_key;
-	int n, tail;
 	int rc;
 
 	memset (&aes_key, 0, sizeof aes_key);
@@ -151,16 +155,15 @@ encrypt_privkey (struct secmem *secmem)
 		printf ("error setting aes key\n");
 		exit (1);
 	}
-	n = secmem->id_rsa_clear->used;
-	tail = n % 8;
-	if (tail)
-		n += 8 - tail;
-	n = AES_wrap_key (&aes_key, secmem->secmem_iv->buf,
-			  secmem->id_rsa_cipher->buf,
-			  secmem->id_rsa_clear->buf, n);
 
-	secmem->id_rsa_cipher->used = n;
-	
+	/* size must be multiple of AES_BLOCK_SIZE */
+	secmem->id_rsa_cipher->used
+		= AES_wrap_key (&aes_key,
+				secmem->secmem_iv->buf,
+				secmem->id_rsa_cipher->buf,
+				secmem->id_rsa_clear->buf,
+				secmem->id_rsa_clear->used);
+
 	wipe_privkey (secmem);
 }
 
@@ -168,16 +171,16 @@ void
 decrypt_privkey (struct secmem *secmem)
 {
 	AES_KEY aes_key;
-	int n;
 
 	AES_set_decrypt_key (secmem->secmem_key->buf,
 			     secmem->secmem_key->avail * 8, 
 			     &aes_key);
-	n = AES_unwrap_key (&aes_key, secmem->secmem_iv->buf,
-			    secmem->id_rsa_clear->buf,
-			    secmem->id_rsa_cipher->buf,
-			    secmem->id_rsa_cipher->used);
-	secmem->id_rsa_clear->used = n;
+	secmem->id_rsa_clear->used
+		= AES_unwrap_key (&aes_key,
+				  secmem->secmem_iv->buf,
+				  secmem->id_rsa_clear->buf,
+				  secmem->id_rsa_cipher->buf,
+				  secmem->id_rsa_cipher->used);
 }
 
 int
@@ -219,8 +222,10 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 	if ((user = getenv ("USER")) == NULL)
 		goto bad;
 
-	if ((inf = fopen (encname, "r")) == NULL)
+	if ((inf = fopen (encname, "r")) == NULL) {
+		printf ("can't open ciphertext %s\n", encname);
 		goto bad;
+	}
 
 	while (fgets (buf, sizeof buf, inf) != NULL) {
 		len = strlen (buf);
@@ -370,21 +375,19 @@ done:
 }
 
 int
-pw_callback (char *buf, int size, int rwflag, void *userdata)
-{
-	printf ("callback\n");
-	exit(0);
-}
-
-int
 main (int argc, char **argv)
 {
 	int c;
-	char cmd[1000];
 	FILE *inf;
 	int n;
 	struct secmem *secmem;
 	char *p;
+	int nblocks;
+	int clear_size, clear_size_extra;
+	char fname[1000];
+	EVP_PKEY *pkey;
+	BIO *bio;
+	int rc;
 
 	while ((c = getopt (argc, argv, "")) != EOF) {
 		switch (c) {
@@ -398,35 +401,28 @@ main (int argc, char **argv)
 
 	secure_malloc (1);
 	secmem = secure_malloc (sizeof *secmem);
-	secmem->id_rsa_clear = make_secbuf (8192);
-	secmem->id_rsa_cipher = make_secbuf (8192);
 	secmem->secmem_key = make_secbuf (128 / 8);
 	secmem->secmem_iv = make_secbuf (128 / 8);
 
-	char fname[1000];
-	sprintf (fname, "%s/.ssh/id_rsa", getenv ("HOME"));
+	snprintf (fname, sizeof fname, "%s/.ssh/id_rsa", getenv ("HOME"));
 	if ((inf = fopen (fname, "r")) == NULL) {
 		printf ("can't open %s\n", fname);
 		exit (1);
 	}
 
-	EVP_PKEY *pkey;
-
 	OpenSSL_add_all_ciphers ();
 
 	pkey = NULL;
-	pkey = PEM_read_PrivateKey(inf, &pkey, pw_callback, "foobar");
+	pkey = PEM_read_PrivateKey(inf, &pkey, NULL, NULL);
 	if (pkey == NULL) {
 		printf ("error getting private key\n");
 		exit (1);
 	}
 	printf ("pkey %p\n", pkey);
 
-	BIO *bio;
 	bio = BIO_new (BIO_s_mem ());
 	printf ("bio %p\n", bio);
 
-	int rc;
 	rc = PEM_write_bio_PKCS8PrivateKey (bio, pkey,
 					    NULL, NULL, 0, NULL, NULL);
 	if (rc <= 0) {
@@ -435,30 +431,146 @@ main (int argc, char **argv)
 	}
 
 	n = BIO_get_mem_data (bio, &p);
-	printf ("mem %d\n", n);
-	dump (p, n);
 
-	exit (0);
+	nblocks = (n + AES_BLOCK_SIZE - 1) / AES_BLOCK_SIZE;
+	clear_size = nblocks * AES_BLOCK_SIZE;
+	clear_size_extra = clear_size + AES_BLOCK_SIZE;
 
+	secmem->id_rsa_clear = make_secbuf (clear_size_extra);
+	memset (secmem->id_rsa_clear->buf, 0, clear_size_extra);
+	memcpy (secmem->id_rsa_clear->buf, p, n);
+	secmem->id_rsa_clear->used = clear_size;
 
-	snprintf (cmd, sizeof cmd,
-		  "openssl rsa -in %s/.ssh/id_rsa -outform PEM",
-		 getenv ("HOME"));
-	printf ("%s\n", cmd);
-	if ((inf = popen (cmd, "r")) == NULL) {
-		printf ("error running: %s\n", cmd);
-		exit (1);
-	}
-
-	n = fread (secmem->id_rsa_clear->buf,
-		   1, secmem->id_rsa_clear->avail - 1, inf);
-	secmem->id_rsa_clear->buf[n] = 0;
-	secmem->id_rsa_clear->used = n;
-	pclose (inf);
+	secmem->id_rsa_cipher = make_secbuf (clear_size_extra);
 
 	encrypt_privkey (secmem);
 
 	decrypt_file (secmem, "/home/pace/csse/x.enc", "TMP.clear");
 
+	run_server (secmem);
+
 	return (0);
 }
+
+void
+run_server (struct secmem *secmem)
+{
+	int listen_sock;
+	struct sockaddr_un addr;
+	int addrlen;
+	char rpkt[5000];
+	struct iovec iov;
+	struct msghdr hdr;
+	struct sockaddr_un client_addr;
+	char aux[5000];
+	int rpkt_len;
+	int iflag;
+	struct cmsghdr *cmsg;
+	struct ucred ucred;
+	int ucred_valid;
+	char *p;
+	char *inname, *outname;
+
+	if ((listen_sock = socket (AF_UNIX, SOCK_DGRAM, 0)) < 0) {
+		fprintf (stderr, "can't create sock\n");
+		exit (1);
+	}
+
+	memset (&addr, 0, sizeof addr);
+	addr.sun_family = AF_UNIX;
+	addr.sun_path[0] = 0;
+	sprintf (addr.sun_path + 1, "slimtstk-agent-%d", getuid ());
+	addrlen = sizeof addr;
+
+	if (bind (listen_sock, (struct sockaddr *)&addr, addrlen) < 0) {
+		fprintf (stderr, "bind error: %s\n", strerror (errno));
+		exit (1);
+	}
+
+	
+	iflag = 1;
+	setsockopt (listen_sock, SOL_SOCKET, SO_PASSCRED,
+		    &iflag, sizeof iflag);
+
+	while (1) {
+		iov.iov_base = rpkt;
+		iov.iov_len = sizeof rpkt - 1;
+
+		memset (&client_addr, 0, sizeof client_addr);
+
+		memset (&hdr, 0, sizeof hdr);
+		hdr.msg_name = &client_addr;
+		hdr.msg_namelen = sizeof client_addr;
+		hdr.msg_iov = &iov;
+		hdr.msg_iovlen = 1;
+		hdr.msg_control = aux;
+		hdr.msg_controllen = sizeof aux;
+		hdr.msg_flags = 0;
+		
+		printf ("await message %d\n", hdr.msg_namelen);
+		rpkt_len = recvmsg (listen_sock, &hdr, 0);
+		if (rpkt_len < 0) {
+			printf ("recvmsg error: %s\n", strerror (errno));
+			continue;
+		}
+
+		printf ("recvmsg: %d\n", rpkt_len);
+		rpkt[rpkt_len] = 0;
+
+		printf ("msg_namelen %d\n", hdr.msg_namelen);
+		dump (hdr.msg_name, 32);
+		printf ("iov_len %d\n", (int)iov.iov_len);
+		dump (rpkt, rpkt_len);
+		printf ("controllen %d\n", (int)hdr.msg_controllen);
+		dump (hdr.msg_control, hdr.msg_controllen);
+		
+		ucred_valid = 0;
+		for (cmsg = CMSG_FIRSTHDR (&hdr);
+		     cmsg;
+		     cmsg = CMSG_NXTHDR (&hdr, cmsg)) {
+			if (cmsg->cmsg_level == SOL_SOCKET
+			    && cmsg->cmsg_type == SCM_CREDENTIALS) {
+				memcpy (&ucred, CMSG_DATA(cmsg), sizeof ucred);
+				ucred_valid = 1;
+			} else {
+				printf ("unknown cmsg %d %d\n",
+					cmsg->cmsg_level, cmsg->cmsg_type);
+			}
+		}
+
+		if (! ucred_valid) {
+			printf ("can't find credentials\n");
+			goto next;
+		}
+
+		if (ucred.uid != geteuid ()) {
+			printf ("invalid request from uid %d\n", ucred.uid);
+			goto next;
+		}
+
+		p = rpkt;
+		inname = p;
+		if ((p = memchr (p, 0, rpkt_len)) == NULL) {
+			printf ("can't parse pkt\n");
+			goto next;
+		}
+		p++;
+		outname = p;
+
+		printf ("inname %s\n", inname);
+		printf ("outname %s\n", outname);
+
+
+		printf ("decrypting...\n");
+		if (decrypt_file (secmem, inname, outname) < 0) {
+			printf ("decrypt error\n");
+			goto next;
+		}
+		printf ("ok, output in %s\n", outname);
+
+	next:;
+			
+	}
+	
+}
+

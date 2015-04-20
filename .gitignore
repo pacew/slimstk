@@ -3,3 +3,4 @@
 TMP.*
 *.o
 slimstk-agent
+slimstk-decrypt
