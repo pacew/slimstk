@@ -130,6 +130,13 @@ make_secbuf (size_t size)
 }
 
 void
+wipe_privkey (struct secmem *secmem)
+{
+	memset (secmem->id_rsa_clear->buf, 0, secmem->id_rsa_clear->used);
+	secmem->id_rsa_clear->used = 0;
+}
+
+void
 encrypt_privkey (struct secmem *secmem)
 {
 	AES_KEY aes_key;
@@ -154,8 +161,7 @@ encrypt_privkey (struct secmem *secmem)
 
 	secmem->id_rsa_cipher->used = n;
 	
-	memset (secmem->id_rsa_clear->buf, 0, secmem->id_rsa_clear->used);
-	secmem->id_rsa_clear->used = 0;
+	wipe_privkey (secmem);
 }
 
 void
@@ -175,39 +181,46 @@ decrypt_privkey (struct secmem *secmem)
 }
 
 int
-decrypt_file (struct secmem *secmem, char *encname)
+decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 {
-	FILE *inf;
+	FILE *inf = NULL;
 	char buf[1000];
-	unsigned char ukey[1000];
-	int ukey_len;
+	unsigned char filekey_cipher[1000];
+	int filekey_cipher_len;
 	int len;
 	char *p;
 	unsigned char iv[1000];
 	int ivlen;
 	char *user;
-	BIO *bio;
+	BIO *bio = NULL;
 	EVP_PKEY *pkey;
 	unsigned char filekey[1000];
 	int filekey_len;
 	struct stat statb;
 	int cipher_base64_avail;
-	char *cipher_base64;
+	char *cipher_base64 = NULL;
 	int cipher_bin_avail;
 	int cipher_bin_used;
-	unsigned char *cipher_bin;
+	unsigned char *cipher_bin = NULL;
 	int clear_bin_avail;
 	int clear_bin_used;
-	unsigned char *clear_bin;
+	unsigned char *clear_bin = NULL;
 	int thistime;
 	int offset, togo;
 	int rc;
+	int ret = 0;
+	const int aeskey_size = 256 / 8;
+	unsigned char aeskey[aeskey_size];
+	EVP_CIPHER_CTX evp;
+	FILE *outf = NULL;
 
+	EVP_CIPHER_CTX_init (&evp);
+			
 	if ((user = getenv ("USER")) == NULL)
-		return (-1);
+		goto bad;
 
 	if ((inf = fopen (encname, "r")) == NULL)
-		return (-1);
+		goto bad;
 
 	while (fgets (buf, sizeof buf, inf) != NULL) {
 		len = strlen (buf);
@@ -225,8 +238,9 @@ decrypt_file (struct secmem *secmem, char *encname)
 			if ((ivlen = base64_decode (p, iv, sizeof iv - 1)) < 0)
 				goto bad;
 		} else if (strcmp (buf, user) == 0) {
-			if ((ukey_len = base64_decode (p, ukey,
-						       sizeof ukey - 1)) < 0)
+			if ((filekey_cipher_len
+			     = base64_decode (p, filekey_cipher,
+					      sizeof filekey_cipher - 1)) < 0)
 				goto bad;
 		}
 
@@ -237,23 +251,28 @@ decrypt_file (struct secmem *secmem, char *encname)
 	bio = BIO_new_mem_buf (secmem->id_rsa_clear->buf,
 			       secmem->id_rsa_clear->used);
 	if ((pkey = PEM_read_bio_PrivateKey (bio, NULL, NULL, NULL)) == NULL) {
-		printf ("error in PEM_read_bio_PrivateKey\n");
-		exit (1);
+		fprintf (stderr, "error in PEM_read_bio_PrivateKey\n");
+		goto bad;
 	}
-	BIO_free_all (bio);
-	
-	filekey_len = RSA_private_decrypt (ukey_len, ukey,
+
+	filekey_len = RSA_private_decrypt (filekey_cipher_len, filekey_cipher,
 					   filekey,
 					   pkey->pkey.rsa,
 					   RSA_PKCS1_PADDING);
+
+	BIO_free_all (bio);
+	bio = NULL;
+	wipe_privkey (secmem);
+	
 	if (filekey_len < 0) {
-		printf ("RSA_private_decrypt error %d\n", filekey_len);
+		fprintf (stderr, "RSA_private_decrypt error %d\n",
+			 filekey_len);
 		goto bad;
 	}
-	printf ("rsa ret %d\n", filekey_len);
+	printf ("filekey %d\n", filekey_len);
 	dump (filekey, filekey_len);
 
-	printf ("iv\n");
+	printf ("iv %d\n", ivlen);
 	dump (iv, ivlen);
 
 	fstat (fileno (inf), &statb);
@@ -275,25 +294,20 @@ decrypt_file (struct secmem *secmem, char *encname)
 	cipher_bin_used = base64_decode (cipher_base64,
 					 cipher_bin, cipher_bin_avail);
 
-	/* EVP_DecryptUpdate needs some extra space at the end */
+	/* EVP_DecryptUpdate needs a blocksize of extra space at the end */
 	clear_bin_avail = cipher_bin_used + 100;
 	if ((clear_bin = malloc (clear_bin_avail)) == NULL) {
 		fprintf (stderr, "out of memory\n");
 		exit (1);
 	}
 
-	EVP_CIPHER_CTX evp;
-	EVP_CIPHER_CTX_init (&evp);
-			
-	int aeskey_size = 256 / 8;
-	unsigned char aeskey[256/8];
-	memset (aeskey, 0, sizeof aeskey);
 	if (filekey_len > aeskey_size) {
-		printf ("bad filekey size %d\n", filekey_len);
-		exit (1);
+		fprintf (stderr, "bad filekey size %d\n", filekey_len);
+		goto bad;
 	}
 	memcpy (aeskey, filekey, filekey_len);
 	EVP_DecryptInit (&evp, EVP_aes_256_cbc(), aeskey, iv);
+
 	offset = 0;
 	togo = clear_bin_avail;
 
@@ -303,8 +317,8 @@ decrypt_file (struct secmem *secmem, char *encname)
 				&thistime,
 				cipher_bin, cipher_bin_used);
 	if (rc <= 0) {
-		printf ("decrypt error\n");
-		exit (1);
+		fprintf (stderr, "decrypt error\n");
+		goto bad;
 	}
 	printf ("rc=%d\n", rc);
 
@@ -323,30 +337,36 @@ decrypt_file (struct secmem *secmem, char *encname)
 	clear_bin_used = offset;
 
 	printf ("clear: %d\n", clear_bin_used);
-	dump (clear_bin, 16);
+	dump (clear_bin, clear_bin_used);
 
-	FILE *outf;
-	if ((outf = fopen ("TMP.out", "w")) == NULL) {
-		printf ("can't create TMP.out\n");
-		exit (1);
+	if ((outf = fopen (clearname, "w")) == NULL) {
+		fprintf (stderr, "can't create %s\n", clearname);
+		goto bad;
 	}
 	fwrite (clear_bin, 1, clear_bin_used, outf);
 	fclose (outf);
 
-	printf ("ok\n");
-	exit (0);
-
-	EVP_CIPHER_CTX_cleanup(&evp);
-	free (clear_bin);
-	free (cipher_bin);
-	free (cipher_base64);
-
-	fclose (inf);
-	return (0);
+	goto done;
 
 bad:
-	fclose (inf);
-	return (-1);
+	ret = -1;
+
+done:
+	wipe_privkey (secmem);
+
+	EVP_CIPHER_CTX_cleanup(&evp);
+	
+	if (clear_bin)
+		free (clear_bin);
+	if (cipher_bin)
+		free (cipher_bin);
+	if (cipher_base64)
+		free (cipher_base64);
+	if (bio)
+		BIO_free_all (bio);
+	if (inf)
+		fclose (inf);
+	return (ret);
 }
 
 int
@@ -392,7 +412,7 @@ main (int argc, char **argv)
 
 	encrypt_privkey (secmem);
 
-	decrypt_file (secmem, "/home/pace/csse/x.enc");
+	decrypt_file (secmem, "/home/pace/csse/x.enc", "TMP.clear");
 
 	return (0);
 }

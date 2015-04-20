@@ -28,11 +28,13 @@ if ($indata == "") {
 
 $users = array_keys ($slimstk['users']);
 
-$symkey_clear = openssl_random_pseudo_bytes (16);
+$symkey_clear = openssl_random_pseudo_bytes (32);
 $iv = openssl_random_pseudo_bytes (16);
 
-printf ("TEST key\n");
-$symkey_clear = "foo";
+if (0) {
+	printf ("TEST key\n");
+	$symkey_clear = "foo";
+}
 
 $hdrs = sprintf ("-iv %s\n", base64_encode ($iv));
 foreach ($users as $user) {
