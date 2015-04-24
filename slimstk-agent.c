@@ -19,6 +19,11 @@
 
 #include "base64.h"
 
+#define KEYSIZE_BITS 256
+#define KEYSIZE_BYTES (KEYSIZE_BITS / 8)
+#define CIPHER_ALGO() (EVP_aes_256_cbc())
+#define CIPHER_BLOCK_SIZE AES_BLOCK_SIZE
+
 void
 dump (void *buf, int n)
 {
@@ -102,19 +107,24 @@ urandom_uint (void)
 void *
 secure_malloc (int size) 
 {
-	int act_size;
-	void *ret;
+	int before, after, total;
+	void *base, *ret;
 
-	act_size = urandom_uint () % (1000 * 1000);
-	if (act_size < size)
-		act_size += size * 10;
-	if ((ret = malloc (act_size)) == NULL) {
-		printf ("out of memory (%d)\n", act_size);
+	before = urandom_uint () % (200 * 1000);
+	before &= ~0xfff;
+	after = urandom_uint () % (200 * 1000);
+	total = before + size + after;
+
+	if ((base = malloc (total)) == NULL) {
+		fprintf (stderr, "out of memory (%d)\n", total);
 		exit (1);
 	}
 
+	ret = base + before;
+
 	if (mlock (ret, size) < 0) {
-		printf ("error locking memory: %s\n", strerror (errno));
+		fprintf (stderr, "error locking memory: %s\n",
+			 strerror (errno));
 		exit (1);
 	}
 
@@ -153,7 +163,7 @@ encrypt_privkey (struct secmem *secmem)
 				  secmem->secmem_key->avail * 8, 
 				  &aes_key);
 	if (rc != 0) {
-		printf ("error setting aes key\n");
+		fprintf (stderr, "error setting aes key\n");
 		exit (1);
 	}
 
@@ -213,8 +223,7 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 	int offset, togo;
 	int rc;
 	int ret = 0;
-	const int aeskey_size = 256 / 8;
-	unsigned char aeskey[aeskey_size];
+	unsigned char aeskey[KEYSIZE_BYTES];
 	EVP_CIPHER_CTX evp;
 	FILE *outf = NULL;
 
@@ -224,7 +233,7 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 		goto bad;
 
 	if ((inf = fopen (encname, "r")) == NULL) {
-		printf ("can't open ciphertext %s\n", encname);
+		fprintf (stderr, "can't open ciphertext %s\n", encname);
 		goto bad;
 	}
 
@@ -307,12 +316,12 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 		exit (1);
 	}
 
-	if (filekey_len > aeskey_size) {
+	if (filekey_len > KEYSIZE_BYTES) {
 		fprintf (stderr, "bad filekey size %d\n", filekey_len);
 		goto bad;
 	}
 	memcpy (aeskey, filekey, filekey_len);
-	EVP_DecryptInit (&evp, EVP_aes_256_cbc(), aeskey, iv);
+	EVP_DecryptInit (&evp, CIPHER_ALGO(), aeskey, iv);
 
 	offset = 0;
 	togo = clear_bin_avail;
@@ -334,7 +343,7 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 	thistime = togo;
 	rc = EVP_DecryptFinal (&evp, clear_bin + offset, &thistime);
 	if (rc <= 0) {
-		printf ("decrypt final error %d\n", rc);
+		fprintf (stderr, "decrypt final error %d\n", rc);
 		thistime = 0;
 	}
 	offset += thistime;
@@ -402,8 +411,8 @@ main (int argc, char **argv)
 
 	secure_malloc (1);
 	secmem = secure_malloc (sizeof *secmem);
-	secmem->secmem_key = make_secbuf (128 / 8);
-	secmem->secmem_iv = make_secbuf (128 / 8);
+	secmem->secmem_key = make_secbuf (KEYSIZE_BYTES);
+	secmem->secmem_iv = make_secbuf (CIPHER_BLOCK_SIZE);
 
 	snprintf (fname, sizeof fname, "%s/.ssh/id_rsa", getenv ("HOME"));
 	if ((inf = fopen (fname, "r")) == NULL) {
@@ -416,7 +425,7 @@ main (int argc, char **argv)
 	pkey = NULL;
 	pkey = PEM_read_PrivateKey(inf, &pkey, NULL, NULL);
 	if (pkey == NULL) {
-		printf ("error getting private key\n");
+		fprintf (stderr, "error getting private key\n");
 		exit (1);
 	}
 	printf ("pkey %p\n", pkey);
@@ -427,7 +436,7 @@ main (int argc, char **argv)
 	rc = PEM_write_bio_PKCS8PrivateKey (bio, pkey,
 					    NULL, NULL, 0, NULL, NULL);
 	if (rc <= 0) {
-		printf ("error setting up private key\n");
+		fprintf (stderr, "error setting up private key\n");
 		exit (1);
 	}
 
@@ -445,8 +454,6 @@ main (int argc, char **argv)
 	secmem->id_rsa_cipher = make_secbuf (clear_size_extra);
 
 	encrypt_privkey (secmem);
-
-	decrypt_file (secmem, "/home/pace/csse/x.enc", "TMP.clear");
 
 	setup_server (secmem);
 

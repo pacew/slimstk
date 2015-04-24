@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <memory.h>
 #include <errno.h>
+#include <limits.h>
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -19,18 +20,18 @@ main (int argc, char **argv)
 {
 	int c;
 	char *inname, *outname;
-	int inname_len, outname_len;
+	char in_fullname[PATH_MAX + 1], out_fullname[PATH_MAX + 1];
+	int in_fullname_len, out_fullname_len;
 	int sock;
 	struct sockaddr_un server_addr;
 	int server_addrlen;
 	int xlen;
 	char *xpkt;
 	char *p;
-	struct iovec iov;
-	struct msghdr hdr;
 	int rc;
 	char resp[1000];
 	int n;
+	char cwd[1000];
 
 	while ((c = getopt (argc, argv, "")) != EOF) {
 		switch (c) {
@@ -52,6 +53,28 @@ main (int argc, char **argv)
 	if (optind != argc)
 		usage ();
 
+	getcwd (cwd, sizeof cwd);
+	if (inname[0] != '/') {
+		snprintf (in_fullname, sizeof in_fullname,
+			  "%s/%s", cwd, inname);
+	} else {
+		snprintf (in_fullname, sizeof in_fullname,
+			  "%s", inname);
+	}
+
+	if (outname[0] != '/') {
+		snprintf (out_fullname, sizeof out_fullname,
+			  "%s/%s", cwd, outname);
+	} else {
+		snprintf (out_fullname, sizeof out_fullname,
+			  "%s", outname);
+	}
+
+	if (access (in_fullname, R_OK) < 0) {
+		fprintf (stderr, "can't read: %s\n", in_fullname);
+		exit (1);
+	}
+
 	printf ("my pid %d\n", getpid ());
 
 	sock = socket (AF_UNIX, SOCK_STREAM, 0);
@@ -68,33 +91,29 @@ main (int argc, char **argv)
 		exit (1);
 	}
 
-	inname_len = strlen (inname);
-	outname_len = strlen (outname);
+	in_fullname_len = strlen (in_fullname);
+	out_fullname_len = strlen (out_fullname);
 
-	xlen = inname_len + 1 + outname_len + 1;
+	xlen = in_fullname_len + 1 + out_fullname_len + 1;
 	if ((xpkt = malloc (xlen)) == NULL) {
 		fprintf (stderr, "out of memory\n");
 		exit (1);
 	}
 	p = xpkt;
-	memcpy (p, inname, inname_len);
-	p += inname_len;
+	memcpy (p, in_fullname, in_fullname_len);
+	p += in_fullname_len;
 	*p++ = 0;
-	memcpy (p, outname, outname_len);
-	p += outname_len;
+	memcpy (p, out_fullname, out_fullname_len);
+	p += out_fullname_len;
 	*p++ = 0;
 
-	iov.iov_base = xpkt;
-	iov.iov_len = xlen;
-
-	memset (&hdr, 0, sizeof hdr);
-	hdr.msg_iov = &iov;
-	hdr.msg_iovlen = 1;
-	hdr.msg_flags = 0;
-		
-	rc = sendmsg (sock, &hdr, 0);
-	if (rc < 0) {
-		fprintf (stderr, "sendmsg error: %s\n", strerror (errno));
+	if ((rc = write (sock, xpkt, xlen)) != xlen) {
+		if (rc < 0) {
+			fprintf (stderr, "sendmsg error: %s\n",
+				 strerror (errno));
+		} else {
+			fprintf (stderr, "error sending message\n");
+		}
 		exit (1);
 	}
 
