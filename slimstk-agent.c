@@ -284,11 +284,6 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 			 filekey_len);
 		goto bad;
 	}
-	printf ("filekey %d\n", filekey_len);
-	dump (filekey, filekey_len);
-
-	printf ("iv %d\n", ivlen);
-	dump (iv, ivlen);
 
 	fstat (fileno (inf), &statb);
 	cipher_base64_avail = statb.st_size;
