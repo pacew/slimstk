@@ -63,7 +63,8 @@ struct secmem {
 	struct secbuf *secmem_iv;
 };
 
-void run_server (struct secmem *secmem);
+void setup_server (struct secmem *secmem);
+void process_client (struct secmem *secmem, int sock);
 
 void
 usage (void)
@@ -447,31 +448,21 @@ main (int argc, char **argv)
 
 	decrypt_file (secmem, "/home/pace/csse/x.enc", "TMP.clear");
 
-	run_server (secmem);
+	setup_server (secmem);
 
 	return (0);
 }
 
 void
-run_server (struct secmem *secmem)
+setup_server (struct secmem *secmem)
 {
 	int listen_sock;
 	struct sockaddr_un addr;
 	int addrlen;
-	char rpkt[5000];
-	struct iovec iov;
-	struct msghdr hdr;
-	struct sockaddr_un client_addr;
-	char aux[5000];
-	int rpkt_len;
+	int sock;
 	int iflag;
-	struct cmsghdr *cmsg;
-	struct ucred ucred;
-	int ucred_valid;
-	char *p;
-	char *inname, *outname;
 
-	if ((listen_sock = socket (AF_UNIX, SOCK_DGRAM, 0)) < 0) {
+	if ((listen_sock = socket (AF_UNIX, SOCK_STREAM, 0)) < 0) {
 		fprintf (stderr, "can't create sock\n");
 		exit (1);
 	}
@@ -487,90 +478,130 @@ run_server (struct secmem *secmem)
 		exit (1);
 	}
 
-	
 	iflag = 1;
 	setsockopt (listen_sock, SOL_SOCKET, SO_PASSCRED,
 		    &iflag, sizeof iflag);
 
-	while (1) {
-		iov.iov_base = rpkt;
-		iov.iov_len = sizeof rpkt - 1;
-
-		memset (&client_addr, 0, sizeof client_addr);
-
-		memset (&hdr, 0, sizeof hdr);
-		hdr.msg_name = &client_addr;
-		hdr.msg_namelen = sizeof client_addr;
-		hdr.msg_iov = &iov;
-		hdr.msg_iovlen = 1;
-		hdr.msg_control = aux;
-		hdr.msg_controllen = sizeof aux;
-		hdr.msg_flags = 0;
-		
-		printf ("await message %d\n", hdr.msg_namelen);
-		rpkt_len = recvmsg (listen_sock, &hdr, 0);
-		if (rpkt_len < 0) {
-			printf ("recvmsg error: %s\n", strerror (errno));
-			continue;
-		}
-
-		printf ("recvmsg: %d\n", rpkt_len);
-		rpkt[rpkt_len] = 0;
-
-		printf ("msg_namelen %d\n", hdr.msg_namelen);
-		dump (hdr.msg_name, 32);
-		printf ("iov_len %d\n", (int)iov.iov_len);
-		dump (rpkt, rpkt_len);
-		printf ("controllen %d\n", (int)hdr.msg_controllen);
-		dump (hdr.msg_control, hdr.msg_controllen);
-		
-		ucred_valid = 0;
-		for (cmsg = CMSG_FIRSTHDR (&hdr);
-		     cmsg;
-		     cmsg = CMSG_NXTHDR (&hdr, cmsg)) {
-			if (cmsg->cmsg_level == SOL_SOCKET
-			    && cmsg->cmsg_type == SCM_CREDENTIALS) {
-				memcpy (&ucred, CMSG_DATA(cmsg), sizeof ucred);
-				ucred_valid = 1;
-			} else {
-				printf ("unknown cmsg %d %d\n",
-					cmsg->cmsg_level, cmsg->cmsg_type);
-			}
-		}
-
-		if (! ucred_valid) {
-			printf ("can't find credentials\n");
-			goto next;
-		}
-
-		if (ucred.uid != geteuid ()) {
-			printf ("invalid request from uid %d\n", ucred.uid);
-			goto next;
-		}
-
-		p = rpkt;
-		inname = p;
-		if ((p = memchr (p, 0, rpkt_len)) == NULL) {
-			printf ("can't parse pkt\n");
-			goto next;
-		}
-		p++;
-		outname = p;
-
-		printf ("inname %s\n", inname);
-		printf ("outname %s\n", outname);
-
-
-		printf ("decrypting...\n");
-		if (decrypt_file (secmem, inname, outname) < 0) {
-			printf ("decrypt error\n");
-			goto next;
-		}
-		printf ("ok, output in %s\n", outname);
-
-	next:;
-			
+	if (listen (listen_sock, 5) < 0) {
+		fprintf (stderr, "listen error: %s\n", strerror (errno));
+		exit (1);
 	}
-	
+
+	while (1) {
+		printf ("await connection\n");
+		if ((sock = accept (listen_sock, NULL, NULL)) < 0) {
+			fprintf (stderr, "accept error: %s\n",
+				 strerror (errno));
+			exit (1);
+		}
+
+		printf ("accept ok %d\n", sock);
+		process_client (secmem, sock);
+		close (sock);
+	}
+}
+
+
+void
+process_client (struct secmem *secmem, int sock)
+{
+	char rpkt[5000];
+	struct iovec iov;
+	struct msghdr hdr;
+	char aux[5000];
+	int rpkt_len;
+	struct cmsghdr *cmsg;
+	struct ucred ucred;
+	int ucred_valid;
+	char *p;
+	char *inname, *outname;
+	char resp[1000];
+	int len;
+
+	*resp = 0;
+
+	iov.iov_base = rpkt;
+	iov.iov_len = sizeof rpkt - 1;
+
+	memset (&hdr, 0, sizeof hdr);
+	hdr.msg_iov = &iov;
+	hdr.msg_iovlen = 1;
+	hdr.msg_control = aux;
+	hdr.msg_controllen = sizeof aux;
+	hdr.msg_flags = 0;
+		
+	printf ("await message\n");
+	rpkt_len = recvmsg (sock, &hdr, 0);
+	if (rpkt_len < 0) {
+		sprintf (resp, "recvmsg error: %s\n", strerror (errno));
+		goto done;
+	}
+
+	printf ("recvmsg: %d\n", rpkt_len);
+	rpkt[rpkt_len] = 0;
+
+	printf ("iov_len %d\n", (int)iov.iov_len);
+	dump (rpkt, rpkt_len);
+	printf ("controllen %d\n", (int)hdr.msg_controllen);
+	dump (hdr.msg_control, hdr.msg_controllen);
+		
+	ucred_valid = 0;
+	for (cmsg = CMSG_FIRSTHDR (&hdr);
+	     cmsg;
+	     cmsg = CMSG_NXTHDR (&hdr, cmsg)) {
+		if (cmsg->cmsg_level == SOL_SOCKET
+		    && cmsg->cmsg_type == SCM_CREDENTIALS) {
+			memcpy (&ucred, CMSG_DATA(cmsg), sizeof ucred);
+			ucred_valid = 1;
+		} else {
+			printf ("unknown cmsg %d %d\n",
+				cmsg->cmsg_level, cmsg->cmsg_type);
+		}
+	}
+
+	if (! ucred_valid) {
+		sprintf (resp, "can't find credentials\n");
+		goto done;
+	}
+
+	printf ("request is from uid %d pid %d\n", ucred.uid, ucred.pid);
+
+	if (ucred.uid != geteuid ()) {
+		sprintf (resp, "invalid request from uid %d\n", ucred.uid);
+		goto done;
+	}
+
+	p = rpkt;
+	inname = p;
+	if ((p = memchr (p, 0, rpkt_len)) == NULL) {
+		sprintf (resp, "can't parse pkt");
+		goto done;
+	}
+	p++;
+	outname = p;
+
+	printf ("inname %s\n", inname);
+	printf ("outname %s\n", outname);
+
+	if (inname[0] != '/' || outname[0] != '/') {
+		sprintf (resp, "must use absolute paths");
+		goto done;
+	}
+
+	printf ("decrypting...\n");
+	if (decrypt_file (secmem, inname, outname) < 0) {
+		sprintf (resp, "decrypt error\n");
+		goto done;
+	}
+	sprintf (resp, "ok");
+
+done:
+	if (*resp == 0)
+		sprintf (resp, "unknown error");
+	len = strlen (resp);
+	while (len > 0 && isspace (resp[len-1]))
+		resp[--len] = 0;
+	printf ("response: %s\n", resp);
+	write (sock, resp, strlen (resp));
 }
 

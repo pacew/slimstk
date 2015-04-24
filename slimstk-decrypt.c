@@ -29,6 +29,8 @@ main (int argc, char **argv)
 	struct iovec iov;
 	struct msghdr hdr;
 	int rc;
+	char resp[1000];
+	int n;
 
 	while ((c = getopt (argc, argv, "")) != EOF) {
 		switch (c) {
@@ -52,7 +54,7 @@ main (int argc, char **argv)
 
 	printf ("my pid %d\n", getpid ());
 
-	sock = socket (AF_UNIX, SOCK_DGRAM, 0);
+	sock = socket (AF_UNIX, SOCK_STREAM, 0);
 
 	memset (&server_addr, 0, sizeof server_addr);
 	server_addr.sun_family = AF_UNIX;
@@ -60,6 +62,12 @@ main (int argc, char **argv)
 	sprintf (server_addr.sun_path + 1, "slimtstk-agent-%d", getuid ());
 	server_addrlen = sizeof server_addr;
 	
+	if (connect (sock, (struct sockaddr *)&server_addr,
+		     server_addrlen) < 0) {
+		fprintf (stderr, "connect error: %s\n", strerror (errno));
+		exit (1);
+	}
+
 	inname_len = strlen (inname);
 	outname_len = strlen (outname);
 
@@ -80,8 +88,6 @@ main (int argc, char **argv)
 	iov.iov_len = xlen;
 
 	memset (&hdr, 0, sizeof hdr);
-	hdr.msg_name = &server_addr;
-	hdr.msg_namelen = server_addrlen;
 	hdr.msg_iov = &iov;
 	hdr.msg_iovlen = 1;
 	hdr.msg_flags = 0;
@@ -91,6 +97,14 @@ main (int argc, char **argv)
 		fprintf (stderr, "sendmsg error: %s\n", strerror (errno));
 		exit (1);
 	}
+
+	if ((n = read (sock, resp, sizeof resp - 1)) < 0) {
+		printf ("read error %s\n", strerror (errno));
+		exit (1);
+	}
+	resp[n] = 0;
+
+	printf ("response: %s\n", resp);
 
 	return (0);
 }
