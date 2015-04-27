@@ -7,6 +7,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <signal.h>
 
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -20,6 +21,8 @@
 #include "base64.h"
 
 int verbose;
+int background_mode;
+int kill_flag;
 
 #define KEYSIZE_BITS 256
 #define KEYSIZE_BYTES (KEYSIZE_BITS / 8)
@@ -71,6 +74,7 @@ struct secmem {
 };
 
 void setup_server (struct secmem *secmem);
+void run_server (struct secmem *secmem);
 void process_client (struct secmem *secmem, int sock);
 
 void
@@ -400,6 +404,66 @@ done:
 	return (ret);
 }
 
+void
+daemonize (void)
+{
+	int pid;
+	int fd;
+	
+	fflush (stdout);
+	fflush (stderr);
+	
+	if ((pid = fork ()) < 0) {
+		perror ("fork");
+		exit (1);
+	}
+	
+	if (pid > 0) {
+		/* let the child run a little before we exit */
+		usleep (500 * 1000);
+		exit (0);
+	}
+	
+	setsid ();
+	
+	if ((fd = open ("/dev/null", O_RDWR)) >= 0) {
+		if (fd != 0) {
+			dup2 (fd, 0);
+			dup2 (fd, 1);
+			dup2 (fd, 2);
+			close (fd);
+		}
+	}
+}
+
+int
+kill_agent (void)
+{
+	int n, sock;
+	struct sockaddr_un server_addr;
+	int server_addrlen;
+	
+
+	sock = socket (AF_UNIX, SOCK_STREAM, 0);
+
+	memset (&server_addr, 0, sizeof server_addr);
+	server_addr.sun_family = AF_UNIX;
+	server_addr.sun_path[0] = 0;
+	sprintf (server_addr.sun_path + 1, "slimtstk-agent-%d", getuid ());
+	server_addrlen = sizeof server_addr;
+	
+	if (connect (sock, (struct sockaddr *)&server_addr,
+		     server_addrlen) < 0) {
+		return (-1);
+	}
+
+	n = write (sock, "kill", 4);
+	close (sock);
+	if (n != 4)
+		return (-1);
+	return (0);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -415,8 +479,17 @@ main (int argc, char **argv)
 	BIO *bio;
 	int rc;
 
-	while ((c = getopt (argc, argv, "")) != EOF) {
+	while ((c = getopt (argc, argv, "vbk")) != EOF) {
 		switch (c) {
+		case 'v':
+			verbose = 1;
+			break;
+		case 'b':
+			background_mode = 1;
+			break;
+		case 'k':
+			kill_flag = 1;
+			break;
 		default:
 			usage ();
 		}
@@ -425,10 +498,18 @@ main (int argc, char **argv)
 	if (optind != argc)
 		usage ();
 
+	if (kill_flag) {
+		if (kill_agent () < 0)
+			exit (1);
+		exit (0);
+	}
+
 	secure_malloc (1);
 	secmem = secure_malloc (sizeof *secmem);
 	secmem->secmem_key = make_secbuf (KEYSIZE_BYTES);
 	secmem->secmem_iv = make_secbuf (CIPHER_BLOCK_SIZE);
+
+	setup_server (secmem);
 
 	snprintf (fname, sizeof fname, "%s/.ssh/id_rsa", getenv ("HOME"));
 	if ((inf = fopen (fname, "r")) == NULL) {
@@ -469,18 +550,23 @@ main (int argc, char **argv)
 
 	encrypt_privkey (secmem);
 
-	setup_server (secmem);
+	if (background_mode)
+		daemonize ();
+
+	signal (SIGPIPE, SIG_IGN);
+
+	run_server (secmem);
 
 	return (0);
 }
 
+int listen_sock;
+
 void
 setup_server (struct secmem *secmem)
 {
-	int listen_sock;
 	struct sockaddr_un addr;
 	int addrlen;
-	int sock;
 	int iflag;
 
 	if ((listen_sock = socket (AF_UNIX, SOCK_STREAM, 0)) < 0) {
@@ -507,6 +593,12 @@ setup_server (struct secmem *secmem)
 		fprintf (stderr, "listen error: %s\n", strerror (errno));
 		exit (1);
 	}
+}
+
+void
+run_server (struct secmem *secmem)
+{
+	int sock;
 
 	while (1) {
 		if (verbose)
@@ -573,6 +665,9 @@ process_client (struct secmem *secmem, int sock)
 		printf ("controllen %d\n", (int)hdr.msg_controllen);
 		dump (hdr.msg_control, hdr.msg_controllen);
 	}
+
+	if (rpkt_len == 4 && strncmp (rpkt, "kill", 4) == 0)
+		exit (0);
 
 	ucred_valid = 0;
 	for (cmsg = CMSG_FIRSTHDR (&hdr);

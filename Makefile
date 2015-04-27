@@ -2,7 +2,7 @@ CFLAGS = -g -Wall `pkg-config --cflags openssl`
 #LIBS = `pkg-config --libs openssl`
 LIBS = /home/pace/openssl-1.0.1f/libssl.a /home/pace/openssl-1.0.1f/libcrypto.a -ldl
 
-all: slimstk-agent slimstk-decrypt
+all: slimstk-agent slimstk-decrypt slimstk-login
 
 links:
 	sudo rm -rf /opt/slimstk
@@ -15,6 +15,9 @@ slimstk-agent: slimstk-agent.o base64.o
 
 slimstk-decrypt: slimstk-decrypt.o
 	$(CC) $(CFLAGS) -o slimstk-decrypt slimstk-decrypt.o
+
+slimstk-login: slimstk-login.o json.o
+	$(CC) $(CFLAGS) -o slimstk-login-new slimstk-login.o json.o
 
 clean:
 	rm -f ? *~ TMP.*
