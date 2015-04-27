@@ -19,6 +19,8 @@
 
 #include "base64.h"
 
+int verbose;
+
 #define KEYSIZE_BITS 256
 #define KEYSIZE_BYTES (KEYSIZE_BITS / 8)
 #define CIPHER_ALGO() (EVP_aes_256_cbc())
@@ -195,7 +197,8 @@ decrypt_privkey (struct secmem *secmem)
 }
 
 int
-decrypt_file (struct secmem *secmem, char *encname, char *clearname)
+decrypt_file (struct secmem *secmem, char *encname, char *clearname,
+	      char *errbuf, int errlen)
 {
 	FILE *inf = NULL;
 	char buf[1000];
@@ -223,17 +226,20 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 	int offset, togo;
 	int rc;
 	int ret = 0;
-	unsigned char aeskey[KEYSIZE_BYTES];
 	EVP_CIPHER_CTX evp;
 	FILE *outf = NULL;
 
 	EVP_CIPHER_CTX_init (&evp);
 			
-	if ((user = getenv ("USER")) == NULL)
+	errbuf[0] = 0;
+
+	if ((user = getenv ("USER")) == NULL) {
+		snprintf (errbuf, errlen, "can't find USER in env");
 		goto bad;
+	}
 
 	if ((inf = fopen (encname, "r")) == NULL) {
-		fprintf (stderr, "can't open ciphertext %s\n", encname);
+		snprintf (errbuf, errlen, "can't open ciphertext %s", encname);
 		goto bad;
 	}
 
@@ -250,23 +256,29 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 			*p++ = 0;
 
 		if (strcmp (buf, "-iv") == 0) {
-			if ((ivlen = base64_decode (p, iv, sizeof iv - 1)) < 0)
+			if ((ivlen = base64_decode(p, iv, sizeof iv - 1)) < 0){
+				snprintf (errbuf, errlen,
+					  "base64 decode error for iv");
 				goto bad;
+			}
 		} else if (strcmp (buf, user) == 0) {
 			if ((filekey_cipher_len
 			     = base64_decode (p, filekey_cipher,
-					      sizeof filekey_cipher - 1)) < 0)
+					      sizeof filekey_cipher - 1)) < 0){
+				snprintf (errbuf, errlen,
+					  "bse64 decode error for filekey");
 				goto bad;
+			}
 		}
-
+		
 	}
-
+	
 	decrypt_privkey (secmem);
 
 	bio = BIO_new_mem_buf (secmem->id_rsa_clear->buf,
 			       secmem->id_rsa_clear->used);
 	if ((pkey = PEM_read_bio_PrivateKey (bio, NULL, NULL, NULL)) == NULL) {
-		fprintf (stderr, "error in PEM_read_bio_PrivateKey\n");
+		snprintf (errbuf, errlen, "error parsing private key");
 		goto bad;
 	}
 
@@ -280,8 +292,20 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 	wipe_privkey (secmem);
 	
 	if (filekey_len < 0) {
-		fprintf (stderr, "RSA_private_decrypt error %d\n",
-			 filekey_len);
+		snprintf (errbuf, errlen, "error decrypting private key %d\n",
+			  filekey_len);
+		goto bad;
+	}
+
+	if (filekey_len != KEYSIZE_BYTES) {
+		snprintf (errbuf, errlen, "invalid filekey size %d (want %d)\n",
+			  filekey_len, KEYSIZE_BYTES);
+		goto bad;
+	}
+
+	if (ivlen != CIPHER_BLOCK_SIZE) {
+		snprintf (errbuf, errlen, "invalid size %d (want %d)\n",
+			  ivlen, CIPHER_BLOCK_SIZE);
 		goto bad;
 	}
 
@@ -304,19 +328,20 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 	cipher_bin_used = base64_decode (cipher_base64,
 					 cipher_bin, cipher_bin_avail);
 
+	if (cipher_bin_used < 0) {
+		snprintf (errbuf, errlen,
+			  "base64 decode error for main ciphertext");
+		goto bad;
+	}
+
 	/* EVP_DecryptUpdate needs a blocksize of extra space at the end */
-	clear_bin_avail = cipher_bin_used + 100;
+	clear_bin_avail = cipher_bin_used + CIPHER_BLOCK_SIZE;
 	if ((clear_bin = malloc (clear_bin_avail)) == NULL) {
 		fprintf (stderr, "out of memory\n");
 		exit (1);
 	}
 
-	if (filekey_len > KEYSIZE_BYTES) {
-		fprintf (stderr, "bad filekey size %d\n", filekey_len);
-		goto bad;
-	}
-	memcpy (aeskey, filekey, filekey_len);
-	EVP_DecryptInit (&evp, CIPHER_ALGO(), aeskey, iv);
+	EVP_DecryptInit (&evp, CIPHER_ALGO(), filekey, iv);
 
 	offset = 0;
 	togo = clear_bin_avail;
@@ -327,10 +352,9 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 				&thistime,
 				cipher_bin, cipher_bin_used);
 	if (rc <= 0) {
-		fprintf (stderr, "decrypt error\n");
+		snprintf (errbuf, errlen, "error decrypting file");
 		goto bad;
 	}
-	printf ("rc=%d\n", rc);
 
 	offset += thistime;
 	togo -= thistime;
@@ -338,19 +362,16 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname)
 	thistime = togo;
 	rc = EVP_DecryptFinal (&evp, clear_bin + offset, &thistime);
 	if (rc <= 0) {
-		fprintf (stderr, "decrypt final error %d\n", rc);
-		thistime = 0;
+		snprintf (errbuf, errlen, "error decrypting file 2");
+		goto bad;
 	}
 	offset += thistime;
 	togo -= thistime;
 
 	clear_bin_used = offset;
 
-	printf ("clear: %d\n", clear_bin_used);
-	dump (clear_bin, clear_bin_used);
-
 	if ((outf = fopen (clearname, "w")) == NULL) {
-		fprintf (stderr, "can't create %s\n", clearname);
+		snprintf (errbuf, errlen, "can't create %s\n", clearname);
 		goto bad;
 	}
 	fwrite (clear_bin, 1, clear_bin_used, outf);
@@ -420,18 +441,16 @@ main (int argc, char **argv)
 	pkey = NULL;
 	pkey = PEM_read_PrivateKey(inf, &pkey, NULL, NULL);
 	if (pkey == NULL) {
-		fprintf (stderr, "error getting private key\n");
+		fprintf (stderr, "error parsing ssh private key\n");
 		exit (1);
 	}
-	printf ("pkey %p\n", pkey);
 
 	bio = BIO_new (BIO_s_mem ());
-	printf ("bio %p\n", bio);
 
 	rc = PEM_write_bio_PKCS8PrivateKey (bio, pkey,
 					    NULL, NULL, 0, NULL, NULL);
 	if (rc <= 0) {
-		fprintf (stderr, "error setting up private key\n");
+		fprintf (stderr, "error preparing ssh private key\n");
 		exit (1);
 	}
 
@@ -465,7 +484,7 @@ setup_server (struct secmem *secmem)
 	int iflag;
 
 	if ((listen_sock = socket (AF_UNIX, SOCK_STREAM, 0)) < 0) {
-		fprintf (stderr, "can't create sock\n");
+		fprintf (stderr, "can't create socket for agent\n");
 		exit (1);
 	}
 
@@ -490,14 +509,18 @@ setup_server (struct secmem *secmem)
 	}
 
 	while (1) {
-		printf ("await connection\n");
+		if (verbose)
+			printf ("await connection\n");
+
 		if ((sock = accept (listen_sock, NULL, NULL)) < 0) {
 			fprintf (stderr, "accept error: %s\n",
 				 strerror (errno));
 			exit (1);
 		}
 
-		printf ("accept ok %d\n", sock);
+		if (verbose)
+			printf ("accept ok %d\n", sock);
+
 		process_client (secmem, sock);
 		close (sock);
 	}
@@ -519,6 +542,7 @@ process_client (struct secmem *secmem, int sock)
 	char *inname, *outname;
 	char resp[1000];
 	int len;
+	char errbuf[1000];
 
 	*resp = 0;
 
@@ -532,21 +556,24 @@ process_client (struct secmem *secmem, int sock)
 	hdr.msg_controllen = sizeof aux;
 	hdr.msg_flags = 0;
 		
-	printf ("await message\n");
-	rpkt_len = recvmsg (sock, &hdr, 0);
-	if (rpkt_len < 0) {
+	if (verbose)
+		printf ("await message\n");
+
+	if ((rpkt_len = recvmsg (sock, &hdr, 0)) < 0) {
 		sprintf (resp, "recvmsg error: %s\n", strerror (errno));
 		goto done;
 	}
 
-	printf ("recvmsg: %d\n", rpkt_len);
 	rpkt[rpkt_len] = 0;
 
-	printf ("iov_len %d\n", (int)iov.iov_len);
-	dump (rpkt, rpkt_len);
-	printf ("controllen %d\n", (int)hdr.msg_controllen);
-	dump (hdr.msg_control, hdr.msg_controllen);
-		
+	if (verbose) {
+		printf ("recvmsg: %d\n", rpkt_len);
+		printf ("iov_len %d\n", (int)iov.iov_len);
+		dump (rpkt, rpkt_len);
+		printf ("controllen %d\n", (int)hdr.msg_controllen);
+		dump (hdr.msg_control, hdr.msg_controllen);
+	}
+
 	ucred_valid = 0;
 	for (cmsg = CMSG_FIRSTHDR (&hdr);
 	     cmsg;
@@ -556,7 +583,7 @@ process_client (struct secmem *secmem, int sock)
 			memcpy (&ucred, CMSG_DATA(cmsg), sizeof ucred);
 			ucred_valid = 1;
 		} else {
-			printf ("unknown cmsg %d %d\n",
+			printf ("ignoring unknown cmsg %d %d\n",
 				cmsg->cmsg_level, cmsg->cmsg_type);
 		}
 	}
@@ -566,7 +593,10 @@ process_client (struct secmem *secmem, int sock)
 		goto done;
 	}
 
-	printf ("request is from uid %d pid %d\n", ucred.uid, ucred.pid);
+	if (verbose) {
+		printf ("request is from uid %d pid %d\n",
+			ucred.uid, ucred.pid);
+	}
 
 	if (ucred.uid != geteuid ()) {
 		sprintf (resp, "invalid request from uid %d\n", ucred.uid);
@@ -582,19 +612,21 @@ process_client (struct secmem *secmem, int sock)
 	p++;
 	outname = p;
 
-	printf ("inname %s\n", inname);
-	printf ("outname %s\n", outname);
+	if (verbose) {
+		printf ("inname %s\n", inname);
+		printf ("outname %s\n", outname);
+	}
 
 	if (inname[0] != '/' || outname[0] != '/') {
 		sprintf (resp, "must use absolute paths");
 		goto done;
 	}
 
-	printf ("decrypting...\n");
-	if (decrypt_file (secmem, inname, outname) < 0) {
+	if (decrypt_file (secmem, inname, outname, errbuf, sizeof errbuf) < 0) {
 		sprintf (resp, "decrypt error\n");
 		goto done;
 	}
+
 	sprintf (resp, "ok");
 
 done:
@@ -603,7 +635,10 @@ done:
 	len = strlen (resp);
 	while (len > 0 && isspace (resp[len-1]))
 		resp[--len] = 0;
-	printf ("response: %s\n", resp);
+	if (verbose)
+		printf ("response: %s\n", resp);
 	write (sock, resp, strlen (resp));
+
+	/* caller will close socket */
 }
 
