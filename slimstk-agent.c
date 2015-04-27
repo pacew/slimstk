@@ -629,6 +629,7 @@ process_client (struct secmem *secmem, int sock)
 	int rpkt_len;
 	struct cmsghdr *cmsg;
 	struct ucred ucred;
+	socklen_t slen;
 	int ucred_valid;
 	char *p;
 	char *inname, *outname;
@@ -668,6 +669,14 @@ process_client (struct secmem *secmem, int sock)
 
 	if (rpkt_len == 4 && strncmp (rpkt, "kill", 4) == 0)
 		exit (0);
+
+	slen = sizeof ucred;
+	if (getsockopt (sock, SOL_SOCKET, SO_PEERCRED, &ucred, &slen) < 0) {
+		perror ("getsockopt");
+		exit (1);
+	}
+	printf ("uid = %d\n", ucred.uid);
+	exit (0);
 
 	ucred_valid = 0;
 	for (cmsg = CMSG_FIRSTHDR (&hdr);

@@ -1,6 +1,8 @@
+# apt-get libssl-dev
+
 CFLAGS = -g -Wall `pkg-config --cflags openssl`
-#LIBS = `pkg-config --libs openssl`
-LIBS = /home/pace/openssl-1.0.1f/libssl.a /home/pace/openssl-1.0.1f/libcrypto.a -ldl
+LIBS = `pkg-config --libs openssl`
+# LIBS = /home/pace/openssl-1.0.1f/libssl.a /home/pace/openssl-1.0.1f/libcrypto.a -ldl
 
 all: slimstk-agent slimstk-decrypt slimstk-login
 

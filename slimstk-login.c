@@ -22,6 +22,8 @@ char *
 get_and_trim (void)
 {
 	char buf[1000];
+	int len;
+	char *p;
 
 	fflush (stdout);
 	if (fgets (buf, sizeof buf, stdin) == NULL) {
@@ -61,6 +63,10 @@ main (int argc, char **argv)
 	char *aws_acct_name;
 	char *user;
 	char login_profile[1000];
+	char access_key_enc[1000];
+	char *access_key_id;
+	char *secret_access_key;
+	FILE *outf;
 
 	while ((c = getopt (argc, argv, "")) != EOF) {
 		switch (c) {
@@ -135,8 +141,8 @@ main (int argc, char **argv)
 	sprintf (login_profile, "%s-%s", aws_acct_name, user);
 	printf ("login_profile: %s\n", login_profile);
 
-	sprintf (access_key_enc, "%s/access-key-%s.enc",
-		 confdir, login_profile);
+	snprintf (access_key_enc, sizeof access_key_enc,
+		  "%s/access-key-%s.enc", confdir, login_profile);
 
 	if (access (access_key_enc, R_OK) < 0) {
 		printf ("need aws access_key and secret_access_key"
@@ -154,12 +160,11 @@ main (int argc, char **argv)
 			exit (1);
 		}
 		fprintf (outf, "[%s]\n", login_profile);
-	$text .= sprintf ("aws_access_key_id = %s\n", $access_key_id);
-	$text .= sprintf ("aws_secret_access_key = %s\n",
-			  $secret_access_key);
-
-		
-
+		fprintf (outf, "aws_access_key_id = %s\n", access_key_id);
+		fprintf (outf, "aws_secret_access_key = %s\n",
+			 secret_access_key);
+		fclose (outf);
+	}
 
 	return (0);
 }
