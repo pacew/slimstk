@@ -12,6 +12,6 @@ remove test-key-pair (or work out a better way - maybe stack creator's key)
 healthcheck uses /www/blank/index.html - change to index.php and check
 database connection
 
-move google auth secret to gpg
+encrypt google auth secret
 
 used reduced redundancy storage for tmp files

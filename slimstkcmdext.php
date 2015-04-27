@@ -605,13 +605,13 @@ function slimstk_setup_aws_webserver_access () {
 	if (file_exists ($clear_name))
 		return;
 
-	$gpg_name = sprintf ("%s/%s.gpg", $slimstk['confdir'], $key_name);
+	$enc_name = sprintf ("%s/%s.enc", $slimstk['confdir'], $key_name);
 
-	if (! file_exists ($gpg_name))
+	if (! file_exists ($enc_name))
 		return;
 
-	$cmd = sprintf ("gpg --quiet --decrypt --output - %s",
-			escapeshellarg ($gpg_name));
+	$cmd = sprintf ("slimstk decrypt %s - 2> /dev/null", 
+			escapeshellarg ($enc_name));
 	$cleartext = trim (shell_exec ($cmd));
 
 	$cmd1 = sprintf ("umask 077; cat > %s; chown %s %s",

@@ -218,41 +218,26 @@ function setup_db ($stkinfo, $database) {
 
 	printf ("creating...\n");
 
-	$pwname_gpg = sprintf ("%s/dbpass.%s.%s.gpg",
+	$pwname_enc = sprintf ("%s/dbpass.%s.%s.enc",
 			       $slimstk['confdir'],
 			       $slimstk['aws_acct_name'],
 			       $database);
 
-	if (! file_exists ($pwname_gpg)) {
+	if (! file_exists ($pwname_enc)) {
 		$db_passwd = trim (shell_exec ("pwgen -s 14 1"));
 		if (strlen ($db_passwd) != 14) {
 			printf ("error generating password\n");
 			exit (1);
 		}
-		$pwname_clear = "DANGER.clear";
-		@unlink ($pwname_clear);
-		file_put_contents ($pwname_clear, $db_passwd."\n");
-
-		$gpg_key_ids = slimstk_get_gpg_ids_for_db ($database);
-
-		$cmd = sprintf ("gpg --encrypt --output %s",
-				escapeshellarg ($pwname_gpg));
-		foreach ($gpg_key_ids as $key_id) {
-			$cmd .= sprintf (" --recipient %s",
-					 escapeshellarg ($key_id));
-		}
-		$cmd .= sprintf (" %s", escapeshellarg ($pwname_clear));
-		@unlink ($pwname_gpg);
-		system ($cmd, $rc);
-		if ($rc != 0) {
-			printf ("error running: %s\n", $cmd);
-			exit (1);
-		}
-		@unlink ($pwname_clear);
+		$cmd = sprintf ("slimstk encrypt - %s",
+				escapeshellarg ($pwname_enc));
+		@unlink ($pwname_enc);
+		$outf = popen ($cmd, "w");
+		pclose ($outf);
 	}
 	
-	$cmd = sprintf ("gpg --quiet --decrypt --output - %s",
-			escapeshellarg ($pwname_gpg));
+	$cmd = sprintf ("slimstk decrypt %s - 2> /dev/null",
+			escapeshellarg ($pwname_enc));
 	$db_passwd = trim (shell_exec ($cmd));
 	
 	if ($db_passwd == "") {
@@ -428,60 +413,6 @@ function setup_elb ($stkname) {
 	slimstk_aws ($args);
 
 	return ($dns_name);
-}
-
-function setup_aws_login () {
-	global $slimstk;
-
-	$acct = $slimstk['aws_acct_name'];
-	$user = $_SERVER['USER'];
-
-	if (($gpg_key_id = slimstk_get_gpg_id ($user)) == NULL) {
-		printf ("can't find gpg_key_id for %s\n", $user);
-		exit (1);
-	}
-	$access_key_basename = sprintf ("access-key-%s-%s", $acct, $user);
-
-	$access_key_gpg = sprintf ("%s/%s.gpg",
-				   $slimstk['confdir'], $access_key_basename);
-	
-	if (! file_exists ($access_key_gpg)) {
-		printf ("need access_key and secret_access_key for %s on %s\n",
-			$user, $acct);
-		printf ("access_key_id: ");
-		$access_key_id = trim (slimstk_gets ());
-		printf ("secret_access_key: ");
-		$secret_access_key = trim (slimstk_gets ());
-
-		$text = sprintf ("[%s-%s]\n", $acct, $user);
-		$text .= sprintf ("aws_access_key_id = %s\n", $access_key_id);
-		$text .= sprintf ("aws_secret_access_key = %s\n",
-				  $secret_access_key);
-		
-		$cleartext_file = "DANGER.clear";
-		file_put_contents ($cleartext_file, $text);
-		$cmd = sprintf ("gpg --encrypt --output %s --recipient %s %s",
-				escapeshellarg ($access_key_gpg),
-				escapeshellarg ($gpg_key_id),
-				escapeshellarg ($cleartext_file));
-		system ($cmd, $rc);
-		@unlink ($cleartext_file);
-		if ($rc != 0) {
-			printf ("error storing %s\n", $access_key_gpg);
-			exit (1);
-		}
-	}
-					
-	$lfile = sprintf ("%s/bin/slimstk-login-%s",
-			  $_SERVER['HOME'], $slimstk['aws_acct_name']);
-
-	$text = "#! /bin/sh\n";
-	$prog = sprintf ("%s/slimstk-login", getcwd ());
-	$text .= sprintf ("%s %s\n",
-			  escapeshellarg ($prog),
-			  escapeshellarg ($slimstk['confdir']));
-	file_put_contents ($lfile, $text);
-	chmod ($lfile, 0775);
 }
 
 function setup_kms ($region) {
@@ -965,46 +896,32 @@ function setup_webserver_user () {
 		slimstk_aws ($args);
 	}
 
-	$admins_keys = array ();
-	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-		foreach ($stkinfo['admins'] as $admin) {
-			if (! isset ($admin_keys[$admin])) {
-				$admin_keys[$admin]
-					= slimstk_get_gpg_id ($admin);
-			}
-		}
-	}
-
-	$gpg_name = sprintf ("%s/access-key-%s-webserver.gpg",
-				    $slimstk['confdir'],
-				    $slimstk['aws_acct_name']);
-	if (! file_exists ($gpg_name)) {
+	$enc_name = sprintf ("%s/access-key-%s-webserver.enc",
+			     $slimstk['confdir'],
+			     $slimstk['aws_acct_name']);
+	if (! file_exists ($enc_name)) {
 		printf ("need access_key for webserver on %s\n",
 			$slimstk['aws_acct_name']);
-
+		
 		printf ("access_key_id: ");
 		$access_key_id = trim (slimstk_gets ());
 		printf ("secret_access_key: ");
 		$secret_access_key = trim (slimstk_gets ());
-	
+		
 		$text = sprintf ("[%s-webserver]\n", $slimstk['aws_acct_name']);
 		$text .= sprintf ("aws_access_key_id = %s\n", $access_key_id);
 		$text .= sprintf ("aws_secret_access_key = %s\n",
 				  $secret_access_key);
 	
-		$cmd = sprintf ("gpg --encrypt --output %s",
-				escapeshellarg ($gpg_name));
-		foreach ($admin_keys as $gpg_id) {
-			$cmd .= sprintf (" --recipient %s",
-					 escapeshellarg ($gpg_id));
-		}
+		$cmd = sprintf ("slimstk encrypt - %s",
+				escapeshellarg ($enc_name));
 		printf ("%s\n", $cmd);
 
 		$f = popen ($cmd, "w");
 		fwrite ($f, $text);
 		pclose ($f);
-		if (@filesize ($gpg_name) == 0) {
-			printf ("error storing %s\n", $gpg_name);
+		if (@filesize ($enc_name) == 0) {
+			printf ("error storing %s\n", $enc_name);
 			exit (1);
 		}
 	}
@@ -1019,8 +936,6 @@ setup_instance_profile ();
 setup_codedeploy ();
 
 setup_s3 ();
-
-setup_aws_login ();
 
 setup_server_role ();
 

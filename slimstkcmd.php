@@ -56,18 +56,7 @@ function slimstk_bail_out_on_error () {
 	set_error_handler ("slimstk_err", E_ALL);
 }
 
-function slimstk_get_gpg_id ($for_user) {
-	global $slimstk;
-
-	foreach ($slimstk['users'] as $user => $uinfo) {
-		if (strcmp ($user, $for_user) == 0) {
-			return ($uinfo['gpg_key_id']);
-		}
-	}
-	return (NULL);
-}
-
-function slimstk_get_gpg_ids_for_db ($db) {
+function slimstk_get_users_for_db ($db) {
 	global $slimstk;
 
 	$users = array ();
@@ -79,19 +68,10 @@ function slimstk_get_gpg_ids_for_db ($db) {
 		}
 	}
 
-	$ids = array ();
-	foreach ($users as $user => $dummy) {
-		if (($id = slimstk_get_gpg_id ($user)) == NULL) {
-			printf ("can't find gpg id for user %s\n", $user);
-			exit (1);
-		}
-		$ids[$id] = 1;
-	}
-
-	return (array_keys ($ids));
+	return (array_keys ($users));
 }
 
-function slimstk_get_gpg_ids_for_app ($for_app_name) {
+function slimstk_get_users_for_app ($for_app_name) {
 	global $slimstk;
 
 	$users = array ();
@@ -106,16 +86,7 @@ function slimstk_get_gpg_ids_for_app ($for_app_name) {
 		}
 	}
 
-	$ids = array ();
-	foreach ($users as $user => $dummy) {
-		if (($id = slimstk_get_gpg_id ($user)) == NULL) {
-			printf ("can't find gpg id for user %s\n", $user);
-			exit (1);
-		}
-		$ids[$id] = 1;
-	}
-
-	return (array_keys ($ids));
+	return (array_keys ($users));
 }
 
 function slimstk_gets () {
@@ -133,17 +104,18 @@ function slimstk_gets () {
  * the kms output file is binary, and file_put_contents is documented
  * as binary safe
  */
-function slimstk_make_kms_for_region ($gpg_name, $region) {
+function slimstk_make_kms_for_region ($enc_name, $region) {
 	global $slimstk;
 
-	$cmd = sprintf ("gpg --decrypt --output - %s", $gpg_name);
+	$cmd = sprintf ("slimstk decrypt %s - 2> /dev/null", 
+			escapeshellarg ($enc_name));
 	if (($plaintext = shell_exec ($cmd)) == NULL) {
 		printf ("error running: %s\n", $cmd);
 		return (-1);
 	}
 
 	$suffix = sprintf ("%s.kms", $region);
-	$kms_name = preg_replace ('/gpg$/', $suffix, $gpg_name);
+	$kms_name = preg_replace ('/enc$/', $suffix, $enc_name);
 
 	$kms_key_id = sprintf ("alias/%s", $slimstk['aws_acct_name']);
 

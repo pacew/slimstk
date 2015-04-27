@@ -13,14 +13,14 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 			  $slimstk['confdir'],
 			  $slimstk['aws_acct_name'],
 			  $database);
-	$gpg_name = sprintf ("%s.gpg", $pname);
+	$enc_name = sprintf ("%s.enc", $pname);
 	$kms_name = sprintf ("%s.%s.kms", $pname, $region);
 
 	if (isset ($db_done[$kms_name]))
 		continue;
 	$db_done[$kms_name] = 1;
 
-	slimstk_make_kms_for_region ($gpg_name, $region);
+	slimstk_make_kms_for_region ($enc_name, $region);
 }
 
 $region_done = array ();
@@ -33,10 +33,10 @@ foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 
 	foreach ($slimstk['files'] as $filename) {
 		$fullname = sprintf ("%s/%s", $slimstk['confdir'], $filename);
-		$gpg_name = sprintf ("%s.gpg", $fullname);
-		if (! file_exists ($gpg_name))
+		$enc_name = sprintf ("%s.enc", $fullname);
+		if (! file_exists ($enc_name))
 			continue;
 		$kms_name = sprintf ("%s.%s.kms", $fullname, $region);
-		slimstk_make_kms_for_region ($gpg_name, $region);
+		slimstk_make_kms_for_region ($enc_name, $region);
 	}
 }

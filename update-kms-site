@@ -42,8 +42,8 @@ if (($url_name = @$sinfo['url_name']) == "") {
 
 $region = $stkinfo['region'];
 
-$gpg_name = sprintf ("%s.key.gpg", $url_name);
+$enc_name = sprintf ("%s.key.enc", $url_name);
 
-slimstk_make_kms_for_region ($gpg_name, $region);
+slimstk_make_kms_for_region ($enc_name, $region);
 
 	
