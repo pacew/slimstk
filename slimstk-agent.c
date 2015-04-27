@@ -623,9 +623,6 @@ void
 process_client (struct secmem *secmem, int sock)
 {
 	char rpkt[5000];
-	struct iovec iov;
-	struct msghdr hdr;
-	char aux[5000];
 	int rpkt_len;
 	struct ucred ucred;
 	socklen_t slen;
@@ -637,21 +634,11 @@ process_client (struct secmem *secmem, int sock)
 
 	*resp = 0;
 
-	iov.iov_base = rpkt;
-	iov.iov_len = sizeof rpkt - 1;
-
-	memset (&hdr, 0, sizeof hdr);
-	hdr.msg_iov = &iov;
-	hdr.msg_iovlen = 1;
-	hdr.msg_control = aux;
-	hdr.msg_controllen = sizeof aux;
-	hdr.msg_flags = 0;
-		
 	if (verbose)
 		printf ("await message\n");
 
-	if ((rpkt_len = recvmsg (sock, &hdr, 0)) < 0) {
-		sprintf (resp, "recvmsg error: %s\n", strerror (errno));
+	if ((rpkt_len = recv (sock, rpkt, sizeof rpkt - 1, 0)) < 0) {
+		sprintf (resp, "recv error: %s\n", strerror (errno));
 		goto done;
 	}
 
@@ -659,10 +646,6 @@ process_client (struct secmem *secmem, int sock)
 
 	if (verbose) {
 		printf ("recvmsg: %d\n", rpkt_len);
-		printf ("iov_len %d\n", (int)iov.iov_len);
-		dump (rpkt, rpkt_len);
-		printf ("controllen %d\n", (int)hdr.msg_controllen);
-		dump (hdr.msg_control, hdr.msg_controllen);
 	}
 
 	if (rpkt_len == 4 && strncmp (rpkt, "kill", 4) == 0)
