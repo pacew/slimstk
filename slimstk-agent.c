@@ -461,6 +461,14 @@ kill_agent (void)
 	return (0);
 }
 
+int lifetime_secs = 3600;
+
+void
+alarm_handler (int sig)
+{
+	exit (0);
+}
+
 int
 main (int argc, char **argv)
 {
@@ -559,6 +567,8 @@ main (int argc, char **argv)
 
 	signal (SIGPIPE, SIG_IGN);
 
+	signal (SIGALRM, alarm_handler);
+
 	run_server (secmem);
 
 	return (0);
@@ -608,6 +618,8 @@ run_server (struct secmem *secmem)
 	int sock;
 
 	while (1) {
+		alarm (lifetime_secs);
+
 		if (verbose)
 			printf ("await connection\n");
 
