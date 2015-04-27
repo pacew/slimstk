@@ -4,6 +4,7 @@
 #include <memory.h>
 #include <errno.h>
 #include <limits.h>
+#include <ctype.h>
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -20,18 +21,17 @@ main (int argc, char **argv)
 {
 	int c;
 	char *inname, *outname;
-	char in_fullname[PATH_MAX + 1], out_fullname[PATH_MAX + 1];
-	int in_fullname_len, out_fullname_len;
+	char in_fullname[PATH_MAX + 1];
 	int sock;
 	struct sockaddr_un server_addr;
 	int server_addrlen;
-	int xlen;
-	char *xpkt;
-	char *p;
 	int rc;
-	char resp[1000];
 	int n;
 	char cwd[1000];
+	FILE *inf;
+	char buf[1000];
+	FILE *outf;
+	int len;
 
 	while ((c = getopt (argc, argv, "")) != EOF) {
 		switch (c) {
@@ -62,20 +62,10 @@ main (int argc, char **argv)
 			  "%s", inname);
 	}
 
-	if (outname[0] != '/') {
-		snprintf (out_fullname, sizeof out_fullname,
-			  "%s/%s", cwd, outname);
-	} else {
-		snprintf (out_fullname, sizeof out_fullname,
-			  "%s", outname);
-	}
-
 	if (access (in_fullname, R_OK) < 0) {
 		fprintf (stderr, "can't read: %s\n", in_fullname);
 		exit (1);
 	}
-
-	printf ("my pid %d\n", getpid ());
 
 	sock = socket (AF_UNIX, SOCK_STREAM, 0);
 
@@ -91,23 +81,8 @@ main (int argc, char **argv)
 		exit (1);
 	}
 
-	in_fullname_len = strlen (in_fullname);
-	out_fullname_len = strlen (out_fullname);
-
-	xlen = in_fullname_len + 1 + out_fullname_len + 1;
-	if ((xpkt = malloc (xlen)) == NULL) {
-		fprintf (stderr, "out of memory\n");
-		exit (1);
-	}
-	p = xpkt;
-	memcpy (p, in_fullname, in_fullname_len);
-	p += in_fullname_len;
-	*p++ = 0;
-	memcpy (p, out_fullname, out_fullname_len);
-	p += out_fullname_len;
-	*p++ = 0;
-
-	if ((rc = write (sock, xpkt, xlen)) != xlen) {
+	n = strlen (in_fullname);
+	if ((rc = write (sock, in_fullname, n)) != n) {
 		if (rc < 0) {
 			fprintf (stderr, "sendmsg error: %s\n",
 				 strerror (errno));
@@ -117,13 +92,35 @@ main (int argc, char **argv)
 		exit (1);
 	}
 
-	if ((n = read (sock, resp, sizeof resp - 1)) < 0) {
-		printf ("read error %s\n", strerror (errno));
+	inf = fdopen (sock, "r");
+
+	if (fgets (buf, sizeof buf, inf) == NULL) {
+		fprintf (stderr, "no response from agent\n");
 		exit (1);
 	}
-	resp[n] = 0;
+	len = strlen (buf);
+	while (len > 0 && isspace (buf[len-1]))
+		buf[--len] = 0;
 
-	printf ("response: %s\n", resp);
+	if (strcmp (buf, "ok") != 0) {
+		fprintf (stderr, "error: %s\n", buf);
+		exit (1);
+	}
+
+	if (strcmp (outname, "-") == 0) {
+		outf = stdout;
+	} else {
+		if ((outf = fopen (outname, "w")) == NULL) {
+			fprintf (stderr, "can't create %s\n", outname);
+			exit (1);
+		}
+	}
+
+	while ((c = getc (inf)) != EOF)
+		putc (c, outf);
+
+	fclose (inf);
+	fclose (outf);
 
 	return (0);
 }

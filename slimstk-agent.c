@@ -201,8 +201,9 @@ decrypt_privkey (struct secmem *secmem)
 }
 
 int
-decrypt_file (struct secmem *secmem, char *encname, char *clearname,
-	      char *errbuf, int errlen)
+decrypt_file (struct secmem *secmem, char *encname,
+	      char *errbuf, int errlen,
+	      unsigned char **result_data, int *result_len)
 {
 	FILE *inf = NULL;
 	char buf[1000];
@@ -231,11 +232,15 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname,
 	int rc;
 	int ret = 0;
 	EVP_CIPHER_CTX evp;
-	FILE *outf = NULL;
+
+	*result_data = NULL;
+	*result_len = 0;
+
+	errbuf[0] = 0;
+	
 
 	EVP_CIPHER_CTX_init (&evp);
 			
-	errbuf[0] = 0;
 
 	if ((user = getenv ("USER")) == NULL) {
 		snprintf (errbuf, errlen, "can't find USER in env");
@@ -374,13 +379,6 @@ decrypt_file (struct secmem *secmem, char *encname, char *clearname,
 
 	clear_bin_used = offset;
 
-	if ((outf = fopen (clearname, "w")) == NULL) {
-		snprintf (errbuf, errlen, "can't create %s\n", clearname);
-		goto bad;
-	}
-	fwrite (clear_bin, 1, clear_bin_used, outf);
-	fclose (outf);
-
 	goto done;
 
 bad:
@@ -391,8 +389,6 @@ done:
 
 	EVP_CIPHER_CTX_cleanup(&evp);
 	
-	if (clear_bin)
-		free (clear_bin);
 	if (cipher_bin)
 		free (cipher_bin);
 	if (cipher_base64)
@@ -401,6 +397,10 @@ done:
 		BIO_free_all (bio);
 	if (inf)
 		fclose (inf);
+
+	*result_data = clear_bin;
+	*result_len = clear_bin_used;
+
 	return (ret);
 }
 
@@ -439,7 +439,7 @@ daemonize (void)
 int
 kill_agent (void)
 {
-	int n, sock;
+	int sock;
 	struct sockaddr_un server_addr;
 	int server_addrlen;
 	
@@ -457,10 +457,7 @@ kill_agent (void)
 		return (-1);
 	}
 
-	n = write (sock, "kill", 4);
 	close (sock);
-	if (n != 4)
-		return (-1);
 	return (0);
 }
 
@@ -550,6 +547,13 @@ main (int argc, char **argv)
 
 	encrypt_privkey (secmem);
 
+	EVP_PKEY_free (pkey);
+	pkey = NULL;
+
+	BIO_free_all (bio);
+	bio = NULL;
+
+
 	if (background_mode)
 		daemonize ();
 
@@ -581,6 +585,9 @@ setup_server (struct secmem *secmem)
 	addrlen = sizeof addr;
 
 	if (bind (listen_sock, (struct sockaddr *)&addr, addrlen) < 0) {
+		if (errno == EADDRINUSE && background_mode) {
+			exit (0);
+		}
 		fprintf (stderr, "bind error: %s\n", strerror (errno));
 		exit (1);
 	}
@@ -626,34 +633,20 @@ process_client (struct secmem *secmem, int sock)
 	int rpkt_len;
 	struct ucred ucred;
 	socklen_t slen;
-	char *p;
-	char *inname, *outname;
-	char resp[1000];
+	char *inname;
 	int len;
 	char errbuf[1000];
+	unsigned char *result_data;
+	int result_len;
+	int off, togo, thistime;
+	char *p;
 
-	*resp = 0;
-
-	if (verbose)
-		printf ("await message\n");
-
-	if ((rpkt_len = recv (sock, rpkt, sizeof rpkt - 1, 0)) < 0) {
-		sprintf (resp, "recv error: %s\n", strerror (errno));
-		goto done;
-	}
-
-	rpkt[rpkt_len] = 0;
-
-	if (verbose) {
-		printf ("recvmsg: %d\n", rpkt_len);
-	}
-
-	if (rpkt_len == 4 && strncmp (rpkt, "kill", 4) == 0)
-		exit (0);
+	errbuf[0] = 0;
 
 	slen = sizeof ucred;
 	if (getsockopt (sock, SOL_SOCKET, SO_PEERCRED, &ucred, &slen) < 0) {
-		sprintf (resp, "error getting credentials: %s",
+		snprintf (errbuf, sizeof errbuf,
+			  "error getting credentials: %s",
 			 strerror (errno));
 		goto done;
 	}
@@ -664,45 +657,74 @@ process_client (struct secmem *secmem, int sock)
 	}
 
 	if (ucred.uid != geteuid ()) {
-		sprintf (resp, "invalid request from uid %d\n", ucred.uid);
+		snprintf (errbuf, sizeof errbuf,
+			  "invalid request from uid %d\n", ucred.uid);
 		goto done;
 	}
 
-	p = rpkt;
-	inname = p;
-	if ((p = memchr (p, 0, rpkt_len)) == NULL) {
-		sprintf (resp, "can't parse pkt");
+	if (verbose)
+		printf ("read message\n");
+
+	if ((rpkt_len = recv (sock, rpkt, sizeof rpkt - 1, 0)) < 0) {
+		snprintf (errbuf, sizeof errbuf,
+			  "recv error: %s\n", strerror (errno));
 		goto done;
 	}
-	p++;
-	outname = p;
+
+	rpkt[rpkt_len] = 0;
+
+	if (verbose) {
+		printf ("recvmsg: %d\n", rpkt_len);
+	}
+
+	if (rpkt_len == 0)
+		exit (0);
+
+	inname = rpkt;
 
 	if (verbose) {
 		printf ("inname %s\n", inname);
-		printf ("outname %s\n", outname);
 	}
 
-	if (inname[0] != '/' || outname[0] != '/') {
-		sprintf (resp, "must use absolute paths");
+	if (inname[0] != '/') {
+		snprintf (errbuf, sizeof errbuf, "must use absolute path");
 		goto done;
 	}
 
-	if (decrypt_file (secmem, inname, outname, errbuf, sizeof errbuf) < 0) {
-		sprintf (resp, "decrypt error\n");
+	if (decrypt_file (secmem, inname, errbuf, sizeof errbuf,
+			  &result_data, &result_len) < 0) {
+		snprintf (errbuf, sizeof errbuf, "decrypt error\n");
 		goto done;
 	}
 
-	sprintf (resp, "ok");
+	snprintf (errbuf, sizeof errbuf, "ok");
 
 done:
-	if (*resp == 0)
-		sprintf (resp, "unknown error");
-	len = strlen (resp);
-	while (len > 0 && isspace (resp[len-1]))
-		resp[--len] = 0;
+	if (*errbuf == 0)
+		snprintf (errbuf, sizeof errbuf, "unknown error");
+	for (p = errbuf; *p; p++) {
+		if (*p == '\n')
+			*p = ' ';
+	}
+	len = strlen (errbuf);
+	while (len > 0 && isspace (errbuf[len-1]))
+		errbuf[--len] = 0;
 	if (verbose)
-		printf ("response: %s\n", resp);
-	write (sock, resp, strlen (resp));
+		printf ("response: %s\n", errbuf);
+	write (sock, errbuf, strlen (errbuf));
+	write (sock, "\n", 1);
+
+	off = 0;
+	togo = result_len;
+	while (togo > 0) {
+		thistime = write (sock, result_data + off, togo);
+		if (thistime <= 0)
+			break;
+		off += thistime;
+		togo -= thistime;
+	}
+
+	free (result_data);
 
 	/* caller will close socket */
 }

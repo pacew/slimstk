@@ -222,10 +222,13 @@ function cgetopt ($argc, $argv, $opts) {
 
 	$optarg = "";
 	while ($optind < $argc) {
-		if ($argv[$optind][0] != "-")
+		if (strcmp ($argv[$optind][0], "-") != 0)
 			break;
 		
-		if ($argv[$optind] == "--") {
+		if (strcmp ($argv[$optind], "-") == 0)
+			break;
+
+		if (strcmp ($argv[$optind], "--") == 0) {
 			$optind++;
 			break;
 		}

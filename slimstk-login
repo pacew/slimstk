@@ -1,66 +1,15 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
-$argv = $_SERVER['argv'];
+require_once ("/opt/slimstk/slimstkcmd.php");
+slimstk_init ();
 
-if (($confdir = trim (@$argv[1])) == "") {
-	printf ("usage: slimstk-login confdir\n");
-	exit (1);
-}
-
-$stacks_name = sprintf ("%s/stacks.json", $confdir);
-if (($stacks = @json_decode (file_get_contents ($stacks_name), true)) == NULL) {
-	printf ("can't parse %s\n", $stacks_name);
-	exit (1);
-}
-
-$aws_acct_name = $stacks['aws_acct_name'];
-
-if (preg_match (':/:', $aws_acct_name)) {
-	printf ("invliad account name in %s\n", $stacks_name);
-	exit (1);
-}
+$confdir = $slimstk['confdir'];
+$aws_acct_name = $slimstk['aws_acct_name'];
 
 $user = $_SERVER['USER'];
 
 $login_profile = sprintf ("%s-%s", $aws_acct_name, $user);
-
-if (($gpg_key_id = @$stacks['users'][$user]['gpg_key_id']) == "") {
-	printf ("%s doesn't contain a gpg key for %s\n", $stacks_name, $user);
-	exit (1);
-}
-
-$gpg_name = sprintf ("%s/access-key-%s.gpg", $confdir, $login_profile);
-
-if (! file_exists ($gpg_name)) {
-	printf ("need access_key and secret_access_key for %s on %s\n",
-		$user, $aws_acct_name);
-
-	$stdin = fopen ("php://stdin", "r");
-
-	printf ("access_key_id: ");
-	$access_key_id = trim (fgets ($stdin));
-	printf ("secret_access_key: ");
-	$secret_access_key = trim (fgets ($stdin));
-	
-	$text = sprintf ("[%s]\n", $login_profile);
-	$text .= sprintf ("aws_access_key_id = %s\n", $access_key_id);
-	$text .= sprintf ("aws_secret_access_key = %s\n",
-			  $secret_access_key);
-		
-	$cmd = sprintf ("gpg --encrypt --output %s --recipient %s",
-			escapeshellarg ($gpg_name),
-			escapeshellarg ($gpg_key_id));
-	$f = popen ($cmd, "w");
-	fwrite ($f, $text);
-	pclose ($f);
-	if (@filesize ($gpg_name) == 0) {
-		printf ("error storing %s\n", $access_key_gpg);
-		exit (1);
-	}
-
-	printf ("%s created\n", $gpg_name);
-}
 
 $awsdir = sprintf ("%s/.aws", $_SERVER['HOME']);
 if (! file_exists ($awsdir)) {
@@ -81,13 +30,17 @@ foreach ($matches[1] as $item) {
 	$creds[$profile] = trim ($item);
 }
 
-$cmd = sprintf ("gpg --quiet --decrypt --output - %s",
-		escapeshellarg ($gpg_name));
+$aws_key_fname = sprintf ("%s/access-key-%s.enc", $confdir, $login_profile);
+
+$cmd = sprintf ("slimstk decrypt %s - 2> /dev/null",
+		escapeshellarg ($aws_key_fname));
 
 $text = trim (shell_exec ($cmd));
 
 if ($text == NULL) {
 	printf ("error running: %s\n", $cmd);
+	printf ("do you need to run this?\n");
+	printf ("slimstk agent -b\n");
 	exit (1);
 }
 

@@ -28,27 +28,13 @@ function slimstk_init_common () {
 	}
 	
 	if ($confdir == NULL) {
-		$argc = $_SERVER['argc'];
-		$argv = $_SERVER['argv'];
-		for ($idx = 1; $idx < $argc; $idx++) {
-			if (preg_match ('/^--confdir=(.*)/',
-					$argv[$idx], $parts)) {
-				$confdir = $parts[1];
-				unset ($_SERVER['argv'][$idx]);
-			}
-		}
-	}
-
-	if ($confdir == NULL) {
 		$confdir = trim (shell_exec ("git config slimstk.confdir"
 					     ." 2> /dev/null"));
 	}
 
-	if ($confdir == "") {
-		printf ("can't find confdir, you need to do one of:\n"
-			." add --confdir=DIR\n"
-			." run slimstk-login\n"
-			." run git config slimstk.confdir DIR\n");
+	if ($confdir == NULL) {
+		printf ("can't find confdir ... run:\n"
+			." slimstk set-confdir\n");
 		exit (1);
 	}
 
@@ -158,4 +144,38 @@ function slimstk_bucket_exists ($bucket) {
 			return (1);
 	}
 	return (0);
+}
+
+function slimstk_dev_decrypt ($enc_name) {
+	if (($inf = fopen ($enc_name, "r")) == NULL)
+		return (NULL);
+	$symkey_cipher = NULL;
+	$iv = NULL;
+	while (($hdr = trim (fgets ($inf))) != "") {
+		$arr = explode (" ", $hdr);
+		$user = $arr[0];
+		if (strcmp ($user, "-iv") == 0) {
+			$iv = base64_decode ($arr[1]);
+		} else if (strcmp ($user, $_SERVER['USER']) == 0) {
+			$symkey_cipher = base64_decode ($arr[1]);
+		}
+	}
+	
+	$cipher = fread ($inf, 10000);
+	fclose ($inf);
+	
+	if ($symkey_cipher == NULL || $iv == NULL)
+		return (NULL);
+
+	$privkey_file = sprintf ("%s/.ssh/id_rsa", $_SERVER['HOME']);
+	$privkey_resource = openssl_get_privatekey ("file://".$privkey_file);
+
+	/* openssl rsautl -decrypt -inkey id_rsa -in file1 -out file2 */
+	openssl_private_decrypt ($symkey_cipher, $symkey_clear,
+				 $privkey_resource);
+
+	$clear = openssl_decrypt ($cipher, "aes-256-cbc",
+				  $symkey_clear, 0, $iv);
+
+	return ($clear);
 }
