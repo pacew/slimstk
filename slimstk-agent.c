@@ -627,10 +627,8 @@ process_client (struct secmem *secmem, int sock)
 	struct msghdr hdr;
 	char aux[5000];
 	int rpkt_len;
-	struct cmsghdr *cmsg;
 	struct ucred ucred;
 	socklen_t slen;
-	int ucred_valid;
 	char *p;
 	char *inname, *outname;
 	char resp[1000];
@@ -672,28 +670,8 @@ process_client (struct secmem *secmem, int sock)
 
 	slen = sizeof ucred;
 	if (getsockopt (sock, SOL_SOCKET, SO_PEERCRED, &ucred, &slen) < 0) {
-		perror ("getsockopt");
-		exit (1);
-	}
-	printf ("uid = %d\n", ucred.uid);
-	exit (0);
-
-	ucred_valid = 0;
-	for (cmsg = CMSG_FIRSTHDR (&hdr);
-	     cmsg;
-	     cmsg = CMSG_NXTHDR (&hdr, cmsg)) {
-		if (cmsg->cmsg_level == SOL_SOCKET
-		    && cmsg->cmsg_type == SCM_CREDENTIALS) {
-			memcpy (&ucred, CMSG_DATA(cmsg), sizeof ucred);
-			ucred_valid = 1;
-		} else {
-			printf ("ignoring unknown cmsg %d %d\n",
-				cmsg->cmsg_level, cmsg->cmsg_type);
-		}
-	}
-
-	if (! ucred_valid) {
-		sprintf (resp, "can't find credentials\n");
+		sprintf (resp, "error getting credentials: %s",
+			 strerror (errno));
 		goto done;
 	}
 
