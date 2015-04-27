@@ -4,6 +4,8 @@
 require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_init ();
 
+$confdir = $slimstk['confdir'];
+
 $keyname = @$_SERVER['argv'][1];
 
 function usage () {
@@ -34,8 +36,8 @@ if ($parts[0] == "wildcard") {
 	usage ();
 }
 
-$keyfile = sprintf ("%s.key", $keyname);
-$csrfile = sprintf ("%s.csr", $keyname);
+$keyfile = sprintf ("%s/%s.key", $confdir, $keyname);
+$csrfile = sprintf ("%s/%s.csr", $confdir, $keyname);
 
 @unlink ($keyfile);
 @unlink ($csrfile);
@@ -50,7 +52,6 @@ $keygen .= "[ req ]\n"
 if ($alt_name) {
 	$keygen .= "req_extensions = v3_req\n";
 }
-
 
 $keygen .= "\n";
 
@@ -83,30 +84,18 @@ if ($rc != 0) {
 	exit (1);
 }
 
-$app_name = preg_replace ('/-.*/', '', basename (getcwd ()));
-
-$key_ids = slimstk_get_gpg_ids_for_app ($app_name);
-
-$cmd = "gpg --encrypt";
-foreach ($key_ids as $key_id) {
-	$cmd .= sprintf (" --recipient %s", escapeshellarg ($key_id));
-}
-$cmd .= sprintf (" %s", escapeshellarg ($keyfile));
+$cmd = sprintf ("slimstk encrypt %s", escapeshellarg ($keyfile));
 
 system ($cmd, $rc);
 if ($rc != 0) {
 	printf ("error encrypting key\n");
-	printf ("you may need to run:\n");
-	$cmd = "gpg --recv-keys";
-	foreach ($key_ids as $key_id) {
-		$cmd .= sprintf (" %s", escapeshellarg ($key_id));
-	}
-	printf ("%s\n", $cmd);
 	exit (1);
 }
 
 unlink ($keyfile);
 unlink ("TMP.keygen");
 
-$cmd = sprintf ("ls -l %s.*", escapeshellarg ($keyname));
+$cmd = sprintf ("ls -l %s/%s.*",
+		escapeshellarg ($confdir),
+		escapeshellarg ($keyname));
 system ($cmd);
