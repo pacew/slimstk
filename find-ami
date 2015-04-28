@@ -1,0 +1,100 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+function usage () {
+	printf ("usage: find-ami confdir stackname\n");
+	exit (1);
+}
+
+$argv = $_SERVER['argv'];
+$confdir = trim (@$argv[1]);
+$stkname = trim (@$argv[2]);
+if (! file_exists ($confdir . "/stacks.json"))
+	usage ();
+if ($stkname == "")
+	usage ();
+$_SERVER['confdir'] = $confdir;
+
+require_once ("/opt/slimstk/slimstkcmd.php");
+slimstk_init ();
+
+if ((@$stkinfo = $slimstk['stacks'][$stkname]) == NULL) {
+	printf ("unknown stack %s for account %s\n",
+		$stkname, $slimstk['aws_acct_name']);
+	exit (1);
+}
+$region = $stkinfo['region'];
+slimstk_set_region ($region);
+
+
+
+$filters = array ();
+
+function add_filter ($name, $value) {
+	global $filters;
+	$filters[] = array ("Name" => $name, "Values" => array ($value));
+}
+
+// add_filter ("image-id", array ("ami-146e2a7c"));
+add_filter ("architecture", "x86_64");
+add_filter ("virtualization-type", "hvm");
+add_filter ("hypervisor", "xen");
+add_filter ("owner-alias", "amazon");
+add_filter ("root-device-type", "ebs");
+add_filter ("is-public", "true");
+add_filter ("image-type", "machine");
+add_filter ("description", "Amazon Linux AMI 20*");
+add_filter ("name", "amzn-ami-hvm-20*-ebs");
+$args = array ("ec2", "describe-images");
+$args[] = "--filters";
+$args[] = json_encode ($filters);
+$val = slimstk_aws ($args);
+
+$raw_images = $val['Images'];
+
+printf ("%d total images found\n", count ($raw_images));
+
+foreach ($raw_images as $img) {
+	printf ("%s\n", $img['Description']);
+}
+printf ("\n\n");
+
+$imgs = array ();
+foreach ($raw_images as $img) {
+	if (($desc = @$img['Description']) == "")
+		continue;
+	if (preg_match ('/GPU/', $desc))
+		continue;
+	if (preg_match ('/GP2/', $desc))
+		continue;
+	if (preg_match ('/minimal/', $desc))
+		continue;
+	if (! preg_match ('/^Amazon Linux AMI (20[.0-9]*) /', $desc, $parts))
+		continue;
+	$img['slimstk_timestamp'] = $parts[1];
+	$imgs[] = $img;
+}
+
+printf ("%d Amazon Linux images found\n", count ($imgs));
+
+function img_cmp ($a, $b) {
+	return (strcmp ($b['slimstk_timestamp'], $a['slimstk_timestamp']));
+}
+
+usort ($imgs, 'img_cmp');
+
+foreach ($imgs as $img) {
+	printf ("%s %s\n", $img['Description'], $img['ImageId']);
+}
+
+$img = $imgs[0];
+
+printf ("\n");
+printf ("put this in the \$images array in ./setup-asg:\n");
+printf ("\n");
+$desc = preg_replace ('/Amazon Linux /', '', $img['Description']);
+printf ("\$images['%s'] = \"%s\"; /* %s */\n",
+	$region, $img['ImageId'], $desc);
+printf ("\n");
+
+

@@ -13,7 +13,7 @@ $confdir = realpath ($confdir);
 $stacks_name = sprintf ("%s/stacks.json", $confdir);
 if (($slimstk = @json_decode (file_get_contents ($stacks_name), true))
     == NULL) {
-	printf ("%s doesn't appear to be valid\n", $name);
+	printf ("%s doesn't appear to be valid\n", $stacks_name);
 	exit (1);
 }
 

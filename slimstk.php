@@ -27,16 +27,31 @@ function slimstk_init_common () {
 		$confdir = "/opt/slimstk";
 	}
 	
-	if ($confdir == NULL) {
+	if ($confdir == NULL && file_exists (".git/config")) {
 		$confdir = trim (shell_exec ("git config slimstk.confdir"
 					     ." 2> /dev/null"));
 	}
 
+	for ($idx = 1; $idx < $_SERVER['argc']; $idx++) {
+		if (preg_match ('/^--confdir=(.*)/',
+				$_SERVER['argv'][$idx], $parts)) {
+			$confdir = $parts[1];
+			unset ($_SERVER['argv'][$idx]);
+			$_SERVER['argv'] = array_merge ($_SERVER['argv']);
+			break;
+		}
+	}
+
 	if ($confdir == NULL) {
-		printf ("can't find confdir ... run:\n"
-			." slimstk set-confdir\n");
+		printf ("can't find confdir.\n"
+			." if you're in a website repository, run:\n"
+			."    slimstk set-confdir DIR\n"
+			." if you're doing a global operation,"
+			." add --confdir=DIR to the arguments\n");
 		exit (1);
 	}
+
+	putenv ("confdir=$confdir");
 
 	$stacks_file = sprintf ("%s/stacks.json", $confdir);
 	$slimstk = @json_decode (file_get_contents ($stacks_file), true);

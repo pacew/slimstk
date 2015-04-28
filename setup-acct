@@ -833,6 +833,8 @@ function setup_webserver_user () {
 	$user = "webserver";
 	$policy_name = "webserver-policy";
 
+	$buckets = array ();
+
 	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
 		foreach ($stkinfo['sites'] as $siteid => $sinfo) {
 			if (($bucket = @$sinfo['priv_files_bucket']) != "") {
@@ -840,6 +842,10 @@ function setup_webserver_user () {
 			}
 		}
 	}
+
+	if (count ($buckets) == 0)
+		return;
+
 	$resources_top = array ();
 	$resources_files = array ();
 	foreach ($buckets as $bucket => $dummy) {
@@ -876,14 +882,22 @@ function setup_webserver_user () {
 		slimstk_aws ($args);
 	}
 
-	$args = array ("iam", "get-user-policy");
+	$args = array ("iam", "list-user-policies");
 	$args[] = "--user-name";
 	$args[] = $user;
-	$args[] = "--policy-name";
-	$args[] = $policy_name;
 	$val = slimstk_aws ($args);
+	if (array_search ($policy_name, $val['PolicyNames']) === FALSE) {
+		$existing_doc = "";
+	} else {
+		$args = array ("iam", "get-user-policy");
+		$args[] = "--user-name";
+		$args[] = $user;
+		$args[] = "--policy-name";
+		$args[] = $policy_name;
+		$val = slimstk_aws ($args);
+		$existing_doc = $val['PolicyDocument'];
+	}
 	
-	$existing_doc = $val['PolicyDocument'];
 
 	if (! equal_json ($existing_doc, $policy_doc)) {
 		$args = array ("iam", "put-user-policy");

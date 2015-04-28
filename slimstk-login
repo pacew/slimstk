@@ -1,6 +1,10 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
+if (($confdir = @$_SERVER['argv'][1]) != NULL) {
+	$_SERVER['confdir'] = $confdir;
+}
+
 require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_init ();
 

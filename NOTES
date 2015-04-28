@@ -1,21 +1,33 @@
-http://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_BestPractices.html
-innodb_file_per_table
-
-scp `cat INST-FILES` finance2-production:slimstk-inst/.
-then redeploy
-
-
-debug path:
-
-if you can log into the instance
-look at /var/log/cfn-init-cmd.log
-
-================================================================
 normal sequence:
 
+* once per development server:
 make links
-slimstk login ~/conf-SOMETHING
-setup-aws-acct
+
+* once per development session:
+(any directory)
+slimstk agent -b
+optionally:
+slimstk agent -v
+
+* to create or update the overall aws acct:
+cd slimstk
+slimstk-set-aws-secret --confdir=DIR
+setup-acct --confdir=DIR
+
+* to create or update a particular stack:
+cd slimstk
+setup-asg CONFDIR STACKNAME
+
+* once per website:
+cd WEBSITE_DIR
+slimstk set-confdir DIR
+
+* every time, starting to work on a website
+cd WEBSITE_DIR
+slimstk login
+
+================================================================
+
 stack-config STACKNAME
 update-kms
 update-kms-site
@@ -31,13 +43,29 @@ ssl-clean-chain
 
 slimstk status
 ================================================================
+
+
+http://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_BestPractices.html
+innodb_file_per_table
+
+scp `cat INST-FILES` finance2-production:slimstk-inst/.
+then redeploy
+
+
+debug path:
+
+if you can log into the instance
+look at /var/log/cfn-init-cmd.log
+
+================================================================
 startup times:
 
 t2.micro 3:19
+t2.small 3:18
 t2.medium 2:18
+
 m3.medium 3:14
 m3.medium 3:40
-t2.small 3:18
 
 ================================================================
 

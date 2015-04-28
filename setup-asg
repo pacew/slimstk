@@ -39,9 +39,9 @@ $subnet_ids = json_decode (slimstk_getvar_region ("subnet_ids"));
 
 /* http://aws.amazon.com/amazon-linux-ami/ */
 /* we use Amazon Linux HVM EBS-Backed 64-bit */
-
+/* run ./find-ami to find latest id */
 $images = array ();
-$images['us-east-1'] = "ami-146e2a7c"; /* AMI 2014.09.2 released 2015-01-29 */
+$images['us-east-1'] = "ami-10cae778"; /* AMI 2015.03.0 x86_64 HVM EBS */
 $images['us-west-2'] = "ami-dfc39aef"; /* AMI 2014.09.2 released 2015-01-29 */
 $images['us-west-1'] = "ami-42908907"; /* AMI 2014.09.2 released 2015-01-29 */
 
@@ -146,13 +146,16 @@ function build_boot_tar () {
 		}
 		$authorized_keys .= trim (file_get_contents ($src))."\n";
 	}
-	foreach ($stkinfo['extra_ssh_keys'] as $user) {
-		$src = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $user);
-		if (! file_exists ($src)) {
-			printf ("%s is missing\n", $src);
-			exit (1);
+	if (isset ($stkinfo['extra_ssh_keys'])) {
+		foreach ($stkinfo['extra_ssh_keys'] as $user) {
+			$src = sprintf ("%s/sshkey-%s.pub",
+					$slimstk['confdir'], $user);
+			if (! file_exists ($src)) {
+				printf ("%s is missing\n", $src);
+				exit (1);
+			}
+			$authorized_keys .= trim(file_get_contents($src))."\n";
 		}
-		$authorized_keys .= trim (file_get_contents ($src))."\n";
 	}
 	$ret['authorized_keys'] = $authorized_keys;
 
