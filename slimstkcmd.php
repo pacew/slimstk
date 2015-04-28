@@ -56,39 +56,6 @@ function slimstk_bail_out_on_error () {
 	set_error_handler ("slimstk_err", E_ALL);
 }
 
-function slimstk_get_users_for_db ($db) {
-	global $slimstk;
-
-	$users = array ();
-	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-		if (strcmp ($stkinfo['database'], $db) == 0) {
-			foreach ($stkinfo['admins'] as $user) {
-				$users[$user] = 1;
-			}
-		}
-	}
-
-	return (array_keys ($users));
-}
-
-function slimstk_get_users_for_app ($for_app_name) {
-	global $slimstk;
-
-	$users = array ();
-	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-		foreach ($stkinfo['sites'] as $siteid => $sinfo) {
-			$app_name = preg_replace ('/-.*/', '', $siteid);
-			if (strcmp ($app_name, $for_app_name) == 0) {
-				foreach ($stkinfo['admins'] as $user) {
-					$users[$user] = 1;
-				}
-			}
-		}
-	}
-
-	return (array_keys ($users));
-}
-
 function slimstk_gets () {
 	$f = fopen ("php://stdin", "r");
 	$resp = fgets ($f);
@@ -234,3 +201,4 @@ function cgetopt ($argc, $argv, $opts) {
 
 	return (FALSE);
 }
+

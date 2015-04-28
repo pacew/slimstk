@@ -82,15 +82,8 @@ function make_boot_script ($boot) {
 
 $boot = array ();
 
-$users = array ();
-foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-	foreach ($stkinfo['admins'] as $name) {
-		$users[$name] = 1;
-	}
-}
-$users = array_keys ($users);
 $authorized_keys = "";
-foreach ($users as $user) {
+foreach ($slimstk['admins'] as $user) {
 	$src = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $user);
 	if (! file_exists ($src)) {
 		printf ("%s is missing\n", $src);

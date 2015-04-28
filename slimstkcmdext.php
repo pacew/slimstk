@@ -582,20 +582,6 @@ function slimstk_setup_aws_webserver_access () {
 	global $slimstk;
 
 	if ($slimstk['running_on_aws'])
-		retUrn;
-
-	$user = $_SERVER['USER'];
-	$admin_flag = 0;
-	foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-		foreach ($stkinfo['admins'] as $admin) {
-			if (strcmp ($admin, $user) == 0) {
-				$admin_flag = 1;
-				break;
-			}
-		}
-	}
-
-	if ($admin_flag == 0)
 		return;
 
 	$key_name = sprintf ("access-key-%s-webserver",

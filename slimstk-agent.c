@@ -232,6 +232,8 @@ decrypt_file (struct secmem *secmem, char *encname,
 	int rc;
 	int ret = 0;
 	EVP_CIPHER_CTX evp;
+	char *key_user;
+	char *val;
 
 	*result_data = NULL;
 	*result_len = 0;
@@ -252,6 +254,8 @@ decrypt_file (struct secmem *secmem, char *encname,
 		goto bad;
 	}
 
+	filekey_cipher_len = 0;
+
 	while (fgets (buf, sizeof buf, inf) != NULL) {
 		len = strlen (buf);
 		while (len > 0 && isspace (buf[len-1]))
@@ -259,29 +263,52 @@ decrypt_file (struct secmem *secmem, char *encname,
 		if (buf[0] == 0)
 			break;
 
-		for (p = buf; *p && ! isspace (*p); p++)
-			;
+		p = buf;
+		while (isspace (*p))
+			p++;
+
+		key_user = p;
+
+		while (*p && ! isspace (*p))
+			p++;
+		if (*p)
+			*p++ = 0;
+		while (isspace (*p))
+			p++;
+
+		val = p;
+		while (*p && ! isspace (*p))
+			p++;
 		if (*p)
 			*p++ = 0;
 
-		if (strcmp (buf, "-iv") == 0) {
-			if ((ivlen = base64_decode(p, iv, sizeof iv - 1)) < 0){
+		/* key comment follow, but not used here */
+
+		if (strcmp (key_user, "-iv") == 0) {
+			if ((ivlen = base64_decode(val, iv, sizeof iv - 1)) < 0){
 				snprintf (errbuf, errlen,
 					  "base64 decode error for iv");
 				goto bad;
 			}
-		} else if (strcmp (buf, user) == 0) {
+		} else if (strcmp (key_user, user) == 0) {
 			if ((filekey_cipher_len
-			     = base64_decode (p, filekey_cipher,
+			     = base64_decode (val, filekey_cipher,
 					      sizeof filekey_cipher - 1)) < 0){
 				snprintf (errbuf, errlen,
-					  "bse64 decode error for filekey");
+					  "base64 decode error for filekey");
 				goto bad;
 			}
 		}
 		
 	}
 	
+	if (filekey_cipher_len == 0) {
+		snprintf (errbuf, errlen,
+			  "can't find file key for %s", user);
+		goto bad;
+	}
+
+
 	decrypt_privkey (secmem);
 
 	bio = BIO_new_mem_buf (secmem->id_rsa_clear->buf,

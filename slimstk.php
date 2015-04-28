@@ -38,6 +38,7 @@ function slimstk_init_common () {
 			$confdir = $parts[1];
 			unset ($_SERVER['argv'][$idx]);
 			$_SERVER['argv'] = array_merge ($_SERVER['argv']);
+			$_SERVER['argc'] = count ($_SERVER['argv']);
 			break;
 		}
 	}
@@ -194,3 +195,4 @@ function slimstk_dev_decrypt ($enc_name) {
 
 	return ($clear);
 }
+

@@ -138,7 +138,7 @@ function build_boot_tar () {
 	$ret = array ();
 	
 	$authorized_keys = "";
-	foreach ($stkinfo['admins'] as $user) {
+	foreach ($slimstk['admins'] as $user) {
 		$src = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $user);
 		if (! file_exists ($src)) {
 			printf ("%s is missing\n", $src);

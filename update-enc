@@ -1,0 +1,56 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/opt/slimstk/slimstkcmd.php");
+slimstk_init ();
+
+$confdir = $slimstk['confdir'];
+
+$enc_files = array ();
+foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	$database = $stkinfo['database'];
+	$enc_name = sprintf ("%s/dbpass.%s.%s.enc",
+			     $slimstk['confdir'],
+			     $slimstk['aws_acct_name'],
+			     $database);
+	$enc_files[$enc_name] = 1;
+
+	foreach ($slimstk['files'] as $filename) {
+		if (preg_match ('/[.]enc$/', $filename)) {
+			$enc_name = sprintf ("%s/%s",
+					     $slimstk['confdir'],
+					     $filename);
+			$enc_files[$enc_name] = 1;
+		}
+			
+	}
+}
+
+foreach ($enc_files as $enc_name => $dummy) {
+	$cmd = sprintf ("slimstk decrypt %s - 2> /dev/null",
+			escapeshellarg ($enc_name));
+	$inf = popen ($cmd, "r");
+	$cleartext = stream_get_contents ($inf);
+	pclose ($inf);
+	
+	if ($cleartext == "") {
+		printf ("can't decrypt %s\n", $enc_name);
+		exit (1);
+	}
+
+	$tname = "TMP.enc";
+	@unlink ($tname);
+	$cmd = sprintf ("slimstk encrypt - %s 2> /dev/null",
+			escapeshellarg ($tname));
+	$outf = popen ($cmd, "w");
+	fwrite ($outf, $cleartext);
+	pclose ($outf);
+	if (@filesize ($tname) == 0) {
+		printf ("error encrypting %s to %s\n", $enc_name, $tname);
+		exit (1);
+	}
+	rename ($tname, $enc_name);
+
+	printf ("updated %s\n", $enc_name);
+}
+

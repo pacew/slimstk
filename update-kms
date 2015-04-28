@@ -4,39 +4,34 @@
 require_once ("/opt/slimstk/slimstkcmd.php");
 slimstk_init ();
 
-$db_done = array ();
+$region_files = array ();
+
 foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
+	$region = $stkinfo['region'];
+	if (! isset ($region_files[$region]))
+		$region_files[$region] = array ();
+
 	$database = $stkinfo['database'];
-	$region = $stkinfo['region'];
-
-	$pname = sprintf ("%s/dbpass.%s.%s",
-			  $slimstk['confdir'],
-			  $slimstk['aws_acct_name'],
-			  $database);
-	$enc_name = sprintf ("%s.enc", $pname);
-	$kms_name = sprintf ("%s.%s.kms", $pname, $region);
-
-	if (isset ($db_done[$kms_name]))
-		continue;
-	$db_done[$kms_name] = 1;
-
-	slimstk_make_kms_for_region ($enc_name, $region);
-}
-
-$region_done = array ();
-foreach ($slimstk['stacks'] as $stkname => $stkinfo) {
-	$region = $stkinfo['region'];
-
-	if (isset ($region_done[$region]))
-		continue;
-	$region_done[$region] = 1;
+	$enc_name = sprintf ("%s/dbpass.%s.%s.enc",
+			     $slimstk['confdir'],
+			     $slimstk['aws_acct_name'],
+			     $database);
+	$region_files[$region][$enc_name] = 1;
 
 	foreach ($slimstk['files'] as $filename) {
-		$fullname = sprintf ("%s/%s", $slimstk['confdir'], $filename);
-		$enc_name = sprintf ("%s.enc", $fullname);
-		if (file_exists ($enc_name)) {
-			$kms_name = sprintf ("%s.%s.kms", $fullname, $region);
-			slimstk_make_kms_for_region ($enc_name, $region);
+		if (preg_match ('/[.]enc$/', $filename)) {
+			$enc_name = sprintf ("%s/%s",
+					     $slimstk['confdir'],
+					     $filename);
+			$region_files[$region][$enc_name] = 1;
 		}
+			
+	}
+}
+
+foreach ($region_files as $region => $files) {
+	foreach ($files as $enc_name => $dummy) {
+		printf ("%s %s\n", $region, $enc_name);
+		slimstk_make_kms_for_region ($enc_name, $region);
 	}
 }

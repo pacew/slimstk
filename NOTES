@@ -26,6 +26,14 @@ slimstk set-confdir DIR
 cd WEBSITE_DIR
 slimstk login
 
+* after changing admins or updating ssh or kms keys
+cd slimstk
+update-enc --confdir=DIR
+update-kms --confdir=DIR
+
+
+
+
 ================================================================
 
 stack-config STACKNAME

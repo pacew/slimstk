@@ -45,12 +45,6 @@ if ($indata == "") {
 	exit (1);
 }
 
-if ($for_user) {
-	$users = array ($for_user);
-} else {
-	$users = array_keys ($slimstk['users']);
-}
-
 $symkey_clear = openssl_random_pseudo_bytes (32);
 $iv = openssl_random_pseudo_bytes (16);
 
@@ -60,12 +54,16 @@ if (0) {
 }
 
 $hdrs = sprintf ("-iv %s\n", base64_encode ($iv));
-foreach ($users as $user) {
+foreach ($slimstk['admins'] as $user) {
 	$pubkey_file = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $user);
 	if (! file_exists ($pubkey_file)) {
 		printf ("%s does not exist\n", $pubkey_file);
 		exit (1);
 	}
+
+	$comment = preg_replace ('/^[^ ]* [^ ]*/', '', 
+				 file_get_contents ($pubkey_file));
+	$comment = trim ($comment);
 
 	$cmd = sprintf ("ssh-keygen -e -f %s -m pkcs8",
 			escapeshellarg ($pubkey_file));
@@ -76,7 +74,8 @@ foreach ($users as $user) {
 	openssl_public_encrypt ($symkey_clear, $symkey_cipher,
 				$pubkey_resource);
 
-	$hdrs .= sprintf ("%s %s\n", $user, base64_encode ($symkey_cipher));
+	$hdrs .= sprintf ("%s %s | ssh pubkey comment: %s\n", $user, base64_encode ($symkey_cipher),
+			  $comment);
 }
 
 $outf = fopen ($outname, "w");
