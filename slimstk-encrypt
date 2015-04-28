@@ -62,8 +62,6 @@ if (0) {
 $hdrs = sprintf ("-iv %s\n", base64_encode ($iv));
 foreach ($users as $user) {
 	$pubkey_file = sprintf ("%s/sshkey-%s.pub", $slimstk['confdir'], $user);
-	if ($user == "pace")
-		$pubkey_file = "/home/pace/.ssh/id_rsa.pub";
 	if (! file_exists ($pubkey_file)) {
 		printf ("%s does not exist\n", $pubkey_file);
 		exit (1);
