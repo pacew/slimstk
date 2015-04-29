@@ -656,9 +656,12 @@ function slimstk_install_site ($args = NULL) {
 	slimstk_setup_db ();
 
 	$dir = $slimstk['tmpdir'];
-	system ("sudo mkdir -p $dir");
-	system (sprintf ("sudo chgrp %s $dir", $slimstk['apache_user']));
-	system ("sudo chmod 2775 $dir");
+	if (! file_exists ($dir)) {
+		system ("sudo mkdir -p $dir");
+		system (sprintf ("sudo chgrp %s $dir",
+				 $slimstk['apache_user']));
+		system ("sudo chmod 2775 $dir");
+	}
 
 	if (file_exists ("schema.php")) {
 		require_once ("schema.php");
