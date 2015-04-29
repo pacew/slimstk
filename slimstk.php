@@ -32,7 +32,7 @@ function slimstk_init_common () {
 					     ." 2> /dev/null"));
 	}
 
-	for ($idx = 1; $idx < $_SERVER['argc']; $idx++) {
+	for ($idx = 1; $idx < @$_SERVER['argc']; $idx++) {
 		if (preg_match ('/^--confdir=(.*)/',
 				$_SERVER['argv'][$idx], $parts)) {
 			$confdir = $parts[1];
@@ -160,6 +160,60 @@ function slimstk_bucket_exists ($bucket) {
 			return (1);
 	}
 	return (0);
+}
+
+/* returns a string that starts with "-encrypted", or "error" */
+function slimstk_encrypt ($cleartext, $all_admins = 0) {
+	$symkey_clear = openssl_random_pseudo_bytes (32);
+	$iv = openssl_random_pseudo_bytes (16);
+
+	if (0) {
+		printf ("TEST key\n");
+		$symkey_clear = "foo";
+	}
+
+	$ret = sprintf ("-encrypted %s\n", base64_encode ($iv));
+
+	if ($all_admins) {
+		$users = $slimstk['admins'];
+	} else {
+		$users = array ($_SERVER['USER']);
+	}
+
+	foreach ($users as $user) {
+		$pubkey_file = sprintf ("%s/sshkey-%s.pub",
+					$slimstk['confdir'], $user);
+		if (! file_exists ($pubkey_file)) {
+			return (sprintf ("error %s does not exist\n",
+					 $pubkey_file));
+		}
+
+		$comment = preg_replace ('/^[^ ]* [^ ]*/', '', 
+					 file_get_contents ($pubkey_file));
+		$comment = trim ($comment);
+
+		$cmd = sprintf ("ssh-keygen -e -f %s -m pkcs8",
+				escapeshellarg ($pubkey_file));
+		$pubkey = shell_exec ($cmd);
+		$pubkey_resource = openssl_get_publickey ($pubkey);
+
+		/*
+		 * openssl rsautl -encrypt
+		 *   -inkey id_rsa.pub -pubin -in f1 -out f2
+		 */
+		openssl_public_encrypt ($symkey_clear, $symkey_cipher,
+					$pubkey_resource);
+
+		$ret .= sprintf ("%s %s | ssh pubkey comment: %s\n",
+				 $user, base64_encode ($symkey_cipher),
+				 $comment);
+	}
+
+	$ret .= "\n";
+	$ret .= openssl_encrypt($indata, "aes-256-cbc", $symkey_clear, 0, $iv);
+	$ret .= "\n";
+
+	return ($ret);
 }
 
 function slimstk_dev_decrypt ($enc_name) {
