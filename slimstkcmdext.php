@@ -235,6 +235,9 @@ function slimstk_apache_config ($global_args) {
 
 		$nat_info_file = sprintf ("%s/NAT_INFO",
 					  $slimstk['apache_dir']);
+		if (! file_exists ($nat_info_file)) {
+			printf ("%s missing\n", $nat_info_file);
+		}
 		$nat_info = @file_get_contents ($nat_info_file);
 		if (sscanf ($nat_info, "%s %d", $name, $base) == 2) {
 			$config['url_name'] = $name;
