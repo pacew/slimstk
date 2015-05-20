@@ -124,8 +124,13 @@ function make_virtual_host ($args, $config) {
 
 	$ret .= sprintf ("<VirtualHost *:%d>\n", $args->port);
 
-	$ret .= sprintf ("  ServerName %s\n", $with_www);
-	$ret .= sprintf ("  ServerAlias %s\n", $without_www);
+	if (@$config['mono']) {
+		$ret .= sprintf ("  ServerName %s\n", $without_www);
+		$ret .= sprintf ("  ServerAlias %s\n", $with_www);
+	} else {
+		$ret .= sprintf ("  ServerName %s\n", $with_www);
+		$ret .= sprintf ("  ServerAlias %s\n", $without_www);
+	}
 
 	$ret .= sprintf ("  DocumentRoot %s/website\n", $config['app_root']);
 	$ret .= sprintf ("  FileETag none\n");
@@ -689,8 +694,12 @@ function slimstk_check_mono ($config) {
 		."  <web-application>\n";
 	$webapp .= sprintf ("      <name>%s</name>\n", $siteid);
 	$webapp .= "      <vpath>/</vpath>\n";
-	$webapp .= sprintf ("      <path>%s</path>\n", $config['app_root']);
-	$webapp .= "      <vhost>localhost</vhost>\n";
+	$webapp .= sprintf ("      <path>%s/website</path>\n",
+			    $config['app_root']);
+	$webapp .= sprintf ("      <vhost>%s</vhost>\n",
+			    $config['url_name']);
+	$webapp .= sprintf ("      <vport>%s</vport>\n",
+			    $config['site_port']);
         $webapp .= "  </web-application>\n"
 		."</apps>\n";
 
@@ -702,6 +711,15 @@ function slimstk_check_mono ($config) {
 		$outf = popen ($cmd, "w");
 		fwrite ($outf, $webapp);
 		fclose ($outf);
+	}
+
+	if (! file_exists ("/var/www/.mono")) {
+		$cmd = "sudo mkdir /var/www/.mono";
+		printf ("%s\n", $cmd);
+		system ($cmd);
+		$cmd = "sudo chown www-data /var/www/.mono";
+		printf ("%s\n", $cmd);
+		system ($cmd);
 	}
 }
 
