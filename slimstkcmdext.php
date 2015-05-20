@@ -721,6 +721,15 @@ function slimstk_check_mono ($config) {
 		printf ("%s\n", $cmd);
 		system ($cmd);
 	}
+
+	$fname = "/etc/mono-server4/mono-server4-hosts.conf";
+	$val = file_get_contents ($fname);
+	if (preg_match ("|/usr/lib/mono/4.0|", $val)) {
+		printf ("you need to change MonoPath to /usr/lib/mono/4.5"
+			." in %s\n", $fname);
+		exit (1);
+	}
+
 }
 
 function slimstk_install_site ($args = NULL) {
