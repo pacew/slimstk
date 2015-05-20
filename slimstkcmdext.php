@@ -663,6 +663,7 @@ function slimstk_make_nightly_cron_spec () {
 	return ($cronspec);
 }
 
+/* https://help.ubuntu.com/community/ModMono */
 function slimstk_check_mono ($config) {
 	if (! @$config['mono'])
 		return;
