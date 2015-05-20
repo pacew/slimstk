@@ -209,6 +209,11 @@ function slimstk_apache_config ($global_args) {
 	$config['conf_key'] = $slimstk['conf_key'];
 	$config['app_root'] = getcwd();
 
+	$appinfo = $slimstk['apps'][$slimstk['app_name']];
+	if (@$appinfo['mono']) {
+		$config['mono'] = 1;
+	}
+
 	if ($slimstk['systype'] == "amazon") {
 		$config['devel_mode'] = 0;
 
@@ -280,6 +285,11 @@ function slimstk_apache_config ($global_args) {
 
 	if (file_exists ("/etc/apache2/mods-enabled/valhtml.load"))
 		$apache_conf .= "  AddOutputFilterByType VALHTML text/html\n";
+
+	if (@$config['mono']) {
+		$apache_conf .= "  SetHandler mono\n";
+		$apache_conf .= "  DirectoryIndex index.aspx\n";
+	}
 
 	$apache_conf .= "</Directory>\n";
 	$apache_conf .= "\n";
@@ -648,10 +658,59 @@ function slimstk_make_nightly_cron_spec () {
 	return ($cronspec);
 }
 
+function slimstk_check_mono ($config) {
+	if (! @$config['mono'])
+		return;
+
+	if (! file_exists ("/etc/apache2/mods-available/mod_mono.load")) {
+		printf ("you need to install mono:\n");
+		printf ("sudo /etc/init.d/apache2 stop\n");
+		printf ("sudo apt-get install libapache2-mod-mono\n");
+		/* maybe also mono-complete */
+		exit (1);
+	}
+
+	if (! file_exists ("/etc/apache2/mods-enabled/mod_mono.load")) {
+		$cmd = "sudo a2enmod mod_mono";
+		printf ("%s\n", $cmd);
+		system ($cmd);
+	}
+
+	if (file_exists ("/etc/apache2/mods-enabled/mod_mono_auto.load")) {
+		$cmd = "sudo a2dismod mod_mono_auto";
+		printf ("%s\n", $cmd);
+		system ($cmd);
+	}
+
+	$siteid = $config['siteid'];
+
+	$webapp = "";
+	$webapp .= "<apps>\n"
+		."  <web-application>\n";
+	$webapp .= sprintf ("      <name>%s</name>\n", $siteid);
+	$webapp .= "      <vpath>/</vpath>\n";
+	$webapp .= sprintf ("      <path>%s</path>\n", $config['app_root']);
+	$webapp .= "      <vhost>localhost</vhost>\n";
+        $webapp .= "  </web-application>\n"
+		."</apps>\n";
+
+	$wfile = sprintf ("/etc/mono-server4/%s.webapp", $siteid);
+	$old = @file_get_contents ($wfile);
+	if (strcmp ($old, $webapp) != 0) {
+		printf ("updating %s\n", $wfile);
+		$cmd = sprintf ("sudo sh -c 'cat > %s'", $wfile);
+		$outf = popen ($cmd, "w");
+		fwrite ($outf, $webapp);
+		fclose ($outf);
+	}
+}
+
 function slimstk_install_site ($args = NULL) {
 	global $slimstk;
 
 	$config = slimstk_apache_config ($args);
+
+	slimstk_check_mono ($config);
 
 	slimstk_setup_db ();
 
