@@ -172,7 +172,7 @@ $boot_duration = intval (file_get_contents ("/proc/uptime"));
 file_put_contents ("/tmp/boot_duration", $boot_duration);
 
 $mins = floor ($boot_duration / 60);
-$secs = $boot_time - $mins * 60;
+$secs = $boot_duration - $mins * 60;
 
 printf ("slimstk boot duration %d:%02d\n", $mins, $secs);
 
