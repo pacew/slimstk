@@ -1,6 +1,9 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
+printf ("examimine http://docs.aws.amazon.com/AutoScaling/latest/DeveloperGuide/attach-load-balancer-asg.html\n");
+
+
 function usage () {
 	printf ("usage: setup-asg confdir stackname\n");
 	exit (1);
