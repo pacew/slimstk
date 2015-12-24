@@ -1,0 +1,24 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+$argv = $_SERVER['argv'];
+$ext_name = @$argv[1];
+$port_base = @$argv[2];
+
+if ($ext_name == "") {
+	printf ("usage: slimstk setnat example.com 8000\n");
+	exit (1);
+}
+
+if ($port_base == 0) {
+	$val = $ext_name;
+} else {
+	$val = sprintf ("%s %d", $ext_name, $port_base);
+}
+
+$cmd = sprintf ("git config --replace-all slimstk.nat %s",
+		escapeshellarg ($val));
+system ($cmd);
+
+
+

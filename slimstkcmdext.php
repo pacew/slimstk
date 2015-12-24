@@ -8,7 +8,7 @@ require_once ("/opt/slimstk/slimstkext.php");
 require_once ("/opt/slimstk/slimstkcmd.php");
 
 function slimstk_find_ports (&$config) {
-	global $slimstk;
+	global $slimstk, $port_base, $port_end;
 
 	$fname = sprintf ("%s/%s%s",
 			  $slimstk['apache_conf_avail'],
@@ -24,11 +24,17 @@ function slimstk_find_ports (&$config) {
 		}
 	}
 
-	if (count ($my_prev_ports) >= 1)
-		$config['site_port'] = intval ($my_prev_ports[0]);
+	if (count ($my_prev_ports) >= 1) {
+		$port = intval ($my_prev_ports[0]);
+		if ($port_base <= $port && $port <= $port_end)
+			$config['site_port'] = $port;
+	}
 
-	if (count ($my_prev_ports) >= 2)
-		$config['ssl_port'] = intval ($my_prev_ports[1]);
+	if (count ($my_prev_ports) >= 2) {
+		$port = intval ($my_prev_ports[1]);
+		if ($port_base <= $port && $port <= $port_end)
+			$config['ssl_port'] = $port;
+	}
 }
 
 /* find a free port on ubuntu */
@@ -235,17 +241,24 @@ function slimstk_apache_config ($global_args) {
 
 		$nat_info_file = sprintf ("%s/NAT_INFO",
 					  $slimstk['apache_dir']);
-		if (! file_exists ($nat_info_file)) {
-			printf ("%s missing\n", $nat_info_file);
-		}
+		$nat_info_name = "localhost";
+		$nat_info_base = 8000;
 		$nat_info = @file_get_contents ($nat_info_file);
-		if (sscanf ($nat_info, "%s %d", $name, $base) == 2) {
-			$config['url_name'] = $name;
-			$port_base = $base;
-		} else {
-			$config['url_name'] = "localhost";
-			$port_base = 8000;
+		if (sscanf ($nat_info, "%s %d", $name, $base) >= 1) {
+			$nat_info_name = $name;
+			if ($base)
+				$nat_info_base = $base;
 		}
+
+		$nat_info = shell_exec ("git config slimstk.nat");
+		if (sscanf ($nat_info, "%s %d", $name, $base) >= 1) {
+			$nat_info_name = $name;
+			if ($base)
+				$nat_info_base = $base;
+		}
+
+		$config['url_name'] = $name;
+		$port_base = $nat_info_base;
 		$port_end = $port_base + 900;
 		
 		slimstk_find_ports ($config);
