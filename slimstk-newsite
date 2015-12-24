@@ -1,0 +1,58 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+$confdir = @$_SERVER['argv'][1];
+$app_name = @$_SERVER['argv'][2];
+
+if ($confdir == "" || $app_name == "") {
+	printf ("usage: slimstk newsite CONFDIR SITENAME\n");
+	exit (1);
+}
+
+$confdir = realpath ($confdir);
+
+$stacks_name = sprintf ("%s/stacks.json", $confdir);
+if (($slimstk = @json_decode (file_get_contents ($stacks_name), true))
+    == NULL) {
+	printf ("%s doesn't appear to be valid\n", $stacks_name);
+	exit (1);
+}
+
+if (! isset ($slimstk['apps'][$app_name])) {
+	printf ("you need to add a clause for '%s' under 'apps'\n"
+		."in %s\n",
+		$app_name, $stacks_name);
+	exit (1);
+}
+
+$app_dir = $app_name;
+
+if (0) {
+	if (file_exists ($app_dir)) {
+		printf ("directory %s already exists\n", $app_dir);
+		printf ("you have to remove it if you want to start over\n");
+		exit (1);
+	}
+	mkdir ($app_dir);
+}
+
+$cmd = sprintf ("cd %s && git init", $app_dir);
+system ($cmd);
+
+$cmd = sprintf ("cd %s && git config --replace-all slimstk.confdir %s",
+		$app_dir, $confdir);
+system ($cmd);
+
+$val = file_get_contents ("/opt/slimstk/install-site-template");
+$fname = sprintf ("%s/install-site", $app_dir);
+file_put_contents ($fname, $val);
+chmod ($fname, 0775);
+
+$fname = sprintf ("%s/website", $app_dir);
+if (! file_exists ($fname))
+	mkdir ($fname);
+$fname = sprintf ("%s/website/index.php", $app_dir);
+file_put_contents ($fname, "hello\n");
+
+$cmd = sprintf ("cd %s && git add install-site website/index.php", $app_dir);
+system ($cmd);

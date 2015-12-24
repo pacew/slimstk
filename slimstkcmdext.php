@@ -790,4 +790,13 @@ function slimstk_install_site ($args = NULL) {
 	printf ("%s\n", $config['site_url']);
 	if (isset ($config['ssl_url']))
 		printf ("%s\n", $config['ssl_url']);
+
+	if (strcmp ($config['url_name'], "local.apebble.com") == 0) {
+		printf ("%s\n", make_url ("k.pacew.org",
+					  $config['site_port'], 0));
+		if (isset ($config['ssl_port'])) {
+			printf ("%s\n", make_url ("k.pacew.org",
+						  $config['ssl_port'], 1));
+		}
+	}
 }

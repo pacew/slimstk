@@ -1,0 +1,8 @@
+#! /usr/bin/php
+<?php /* -*- mode:php -*- */
+
+require_once ("/opt/slimstk/slimstkcmdext.php");
+slimstk_init ();
+
+$args = array ();
+slimstk_install_site ($args);
