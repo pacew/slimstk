@@ -812,4 +812,5 @@ function slimstk_install_site ($args = NULL) {
 						  $config['ssl_port'], 1));
 		}
 	}
+	return ($config);
 }
