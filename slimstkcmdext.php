@@ -16,10 +16,15 @@ function slimstk_find_ports (&$config) {
 			  $slimstk['apache_conf_suffix']);
 
 	$my_prev_ports = array ();
+	$prev_wss_port = 0;
 	if (($f = @fopen ($fname, "r")) != NULL) {
 		while (($row = fgets ($f)) != NULL) {
 			if (sscanf ($row, "Listen %d", $port) == 1) {
 				$my_prev_ports[] = $port;
+			}
+			if (preg_match ('/.*SetEnv wss_port [^0-9]*([0-9]+)/',
+					$row, $parts)) {
+				$prev_wss_port = intval ($parts[1]);
 			}
 		}
 	}
@@ -35,6 +40,9 @@ function slimstk_find_ports (&$config) {
 		if ($port_base <= $port && $port <= $port_end)
 			$config['ssl_port'] = $port;
 	}
+
+	if ($prev_wss_port)
+		$config['wss_port'] = $prev_wss_port;
 }
 
 /* find a free port on ubuntu */
@@ -42,14 +50,15 @@ function slimstk_alloc_port () {
 	global $ports_used, $port_end, $port_base;
 	
 	if (! isset ($ports_used)) {
-		exec ("grep --no-filename '^[ 	]*Listen'"
+		exec ("egrep --no-filename '^[ \t]*(Listen|wss_port)'"
 		      ." /etc/apache2/conf.d/*"
 		      ." /etc/apache2/sites-enabled/*"
 		      ." 2> /dev/null",
 		      $outlines);
 		$ports_used = array ();
 		foreach ($outlines as $row) {
-			if (sscanf ($row, "Listen %d", $port) == 1) {
+			if (preg_match ('/.*([0-9]+)/', $row, $parts)) {
+				$port = intval ($parts[1]);
 				$ports_used[$port] = 1;
 			}
 		}
@@ -278,6 +287,13 @@ function slimstk_apache_config ($global_args) {
 		$config['url_name_ssl'] = $config['url_name'];
 		$config['ssl_url'] = make_url ($config['url_name'],
 					       $config['ssl_port'], 1);
+
+		if (! isset ($config['wss_port']))
+			$config['wss_port'] = slimstk_alloc_port ();
+		$config['wss_url'] = sprintf ("wss://%s:%d/",
+					      $config['url_name'],
+					      $config['wss_port']);
+
 	} else {
 		unset ($config['ssl_port']);
 	}
@@ -803,6 +819,8 @@ function slimstk_install_site ($args = NULL) {
 	printf ("%s\n", $config['site_url']);
 	if (isset ($config['ssl_url']))
 		printf ("%s\n", $config['ssl_url']);
+	if (isset ($config['wss_url']))
+		printf ("%s\n", $config['wss_url']);
 
 	if (strcmp ($config['url_name'], "local.apebble.com") == 0) {
 		printf ("%s\n", make_url ("k.pacew.org",
