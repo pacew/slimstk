@@ -57,7 +57,7 @@ function slimstk_alloc_port () {
 		      $outlines);
 		$ports_used = array ();
 		foreach ($outlines as $row) {
-			if (preg_match ('/.*([0-9]+)/', $row, $parts)) {
+			if (preg_match ('/[^0-9]*([0-9]+)/', $row, $parts)) {
 				$port = intval ($parts[1]);
 				$ports_used[$port] = 1;
 			}

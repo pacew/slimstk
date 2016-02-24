@@ -1,6 +1,11 @@
 #! /usr/bin/php
 <?php /* -*- mode:php -*- */
 
+/*
+  in your home directory and before you make a directory for the new site, run:
+  $ slimstk newsite CONFDIR NEW_SITENAME
+ */
+
 $confdir = @$_SERVER['argv'][1];
 $app_name = @$_SERVER['argv'][2];
 
@@ -27,12 +32,11 @@ if (! isset ($slimstk['apps'][$app_name])) {
 
 $app_dir = $app_name;
 
-if (0) {
-	if (file_exists ($app_dir)) {
-		printf ("directory %s already exists\n", $app_dir);
-		printf ("you have to remove it if you want to start over\n");
-		exit (1);
-	}
+if (0 && file_exists ($app_dir)) {
+	printf ("directory %s already exists\n", $app_dir);
+	printf ("you have to remove it if you want to start over\n");
+	exit (1);
+} else {
 	mkdir ($app_dir);
 }
 
