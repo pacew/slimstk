@@ -115,7 +115,21 @@ function prettyprint_json ($json) {
 function slimstk_aws ($args, $ignore_errors = 0, $json_decode = 1) {
 	global $slimstk;
 
-	$cmd = "PATH=\$PATH:/usr/local/bin aws";
+	$cmd = "PATH=\$PATH:/usr/local/bin";
+
+	if ($slimstk['for_webpage'] == 1 && $slimstk['systype'] != "amazon") {
+		$cname = sprintf ("%s/TMP.devel-creds", $slimstk['confdir']);
+		$creds = @file_get_contents ($cname);
+		if (sscanf ($creds, "%s %s", $key_id, $secret) != 2) {
+			printf ("can't find creds");
+			exit (1);
+		}
+		$cmd .= sprintf (" AWS_ACCESS_KEY_ID=%s"
+				 ." AWS_SECRET_ACCESS_KEY=%s",
+				 $key_id, $secret);
+	}
+
+	$cmd .= " aws";
 
 	if (@$slimstk['current_region']) {
 		$cmd .= sprintf (" --region %s",

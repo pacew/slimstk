@@ -48,6 +48,16 @@ if ($text == NULL) {
 	exit (1);
 }
 
+$key_id = NULL;
+$secret = NULL;
+if (preg_match ('/aws_access_key_id.*= *(.*)/', $text, $parts))
+	$key_id = $parts[1];
+if (preg_match ('/aws_secret_access_key.*= *(.*)/', $text, $parts))
+	$secret = $parts[1];
+$cname = sprintf ("%s/TMP.devel-creds", $confdir);
+@unlink ($cname);
+file_put_contents ($cname, sprintf ("%s %s\n", $key_id, $secret));
+
 $creds[$login_profile] = $text;
 
 $tname = tempnam ($awsdir, "TMP.");
