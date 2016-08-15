@@ -40,7 +40,11 @@ function slimstk_init_extended () {
 			
 
 	$issue = file_get_contents ("/etc/issue");
-	if (preg_match ('/Ubuntu 14/', $issue)) {
+	if (preg_match ('/Ubuntu 16/', $issue)) {
+		$slimstk['systype'] = "ubuntu";
+		$slimstk['sysvers'] = 16;
+		$slimstk['apache_conf_suffix'] = ".conf";
+    } else if (preg_match ('/Ubuntu 14/', $issue)) {
 		$slimstk['systype'] = "ubuntu";
 		$slimstk['sysvers'] = 14;
 		$slimstk['apache_conf_suffix'] = ".conf";
@@ -104,7 +108,7 @@ function make_db_connection ($dbparams = NULL) {
 				/* use auth_socket access to localhost */
 				$default_dbparams = array (
 					'host' => '',
-					'user' => '',
+					'user' => $_SERVER["USER"],
 					'passwd' => '');
 			}
 		}
