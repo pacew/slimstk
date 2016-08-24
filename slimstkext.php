@@ -105,10 +105,11 @@ function make_db_connection ($dbparams = NULL) {
 			if ($slimstk['running_on_aws']) {
 				require_once ("/opt/slimstk/dbparams.php");
 			} else {
+				$pw = posix_getpwuid (posix_geteuid ());
 				/* use auth_socket access to localhost */
 				$default_dbparams = array (
 					'host' => '',
-					'user' => $_SERVER["USER"],
+					'user' => $pw['name'],
 					'passwd' => '');
 			}
 		}
