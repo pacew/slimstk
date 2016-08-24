@@ -137,7 +137,8 @@ function make_virtual_host ($args, $config) {
 		$without_www = $args->name;
 	}
 
-	$ret .= sprintf ("<VirtualHost *:%d>\n", $args->port);
+	$ret .= sprintf ("<VirtualHost *:%d [::]:%d>\n",
+			 $args->port, $args->port);
 
 	if (@$config['mono']) {
 		$ret .= sprintf ("  ServerName %s\n", $without_www);
